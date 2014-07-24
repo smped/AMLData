@@ -1,0 +1,76 @@
+% !Rnw root = MainReport.Rnw
+
+%% Does all the QA stages for the dataset
+
+<<QA>>=
+aqm <- arrayQualityMetrics(lBatch, outdir="aqmReport", force=TRUE, do.logtransform=TRUE, intgroup=c("Source", "FANC.ALL"), reporttitle="QA Report for Un-processed FANC-ALM Illumina Dataset")
+## Collect the outliers
+outliers <- vector("list", 3); names(outliers) <- c("heatmap", "boxplot", "ma")
+outliers$heatmap <- aqm$modules$heatmap@outliers@which
+outliers$boxplot <- aqm$modules$boxplot@outliers@which
+outliers$ma <- aqm$modules$ma@outliers@which
+@
+
+<<aqmPlots>>=
+## Use the cropped versions, done manually with pdfcrop
+aqmHeat <- file.path("aqmReport","hmcrop.pdf")
+aqmBox <- file.path("aqmReport", "boxcrop.pdf")
+aqmMa <- file.path("aqmReport", "macrop.pdf")
+aqmPCA <- file.path("aqmReport", "pcacrop.pdf")
+@
+
+Array quality on this set of \Sexpr{nrow(newAnnot)} arrays was assessed using the R package \textit{arrayQualityMetrics}. 
+Distances between arrays were calculated by taking the mean of the absolute values of the differences in $log_2$ intensities between a pair of arrays (Figures \ref{fig:distPlot} \& \ref{fig:distOutPlot}).
+The first four arrays shown in Figure \ref{fig:distPlot} were also detected as potential outlier arrays using box plots of $log_2$-transformed intensity data (Figure \ref{fig:aqmBoxplot}).
+The same four arrays showed a clear discrepancy in the centre of their expression range when compared to a pseudo-array based on the median values for each gene (top row, Figure \ref{fig:aqmMAplot}).
+Similarly the PCA plot showed these four arrays clustering near each other on the RHS of the plot (Figure \ref{fig:aqmPCAplot}).
+<<rmOutliers>>=
+lBatch <- lBatch[,-outliers$boxplot]
+newAnnot <- newAnnot[-outliers$boxplot,]
+nChips <- nrow(newAnnot)
+@
+\par
+\par
+As these four samples (\Sexpr{paste(useArr[outliers$boxplot[1:3]], collapse=", ")} \& \Sexpr{useArr[outliers$boxplot[4]]}) were consistently called as outliers they were subsequently removed from the dataset as they were considered likely to introduce non-biological variability to the data, leaving a total of \Sexpr{nChips} arrays for downstream analysis.
+It was also noted that one of the omitted arrays corresponded to a sample with mutation in the Core/Anchor/ID set of genes, which reduced this category to an effective sample-size of 2.
+However the omission of an array of questionable quality was considered to be the most prudent decision, as inclusion of such an array in a category with so few samples may excessively contribute to the final results, and lead to less reliable conclusions.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{\Sexpr{aqmHeat}}
+  \caption{Heat map showing distances between all pairs of arrays. Note the top four arrays have consistently larger pair-wise distances across the dataset, with exception of the arrays making the first 7 columns. Four of these were also marked as potential outliers. The sample source is indicated on the RHS in red/blue, along with FANC Full Network status in green/orange/light-blue. \label{fig:distPlot}}
+\end{figure}
+
+<<distOutPlot, include=TRUE, fig.height=7, fig.width=4, fig.cap="Distances between arrays. Potential outlier arrays are shown at the top with larger distances. The threshold for outlier detection is shown in red.">>=
+names(aqm$modules$heatmap@outliers@statistic)<-
+  paste(substr(rep("X_00", length(names(aqm$modules$heatmap@outliers@statistic))), start=1, stop=5-nchar(names(aqm$modules$heatmap@outliers@statistic))),
+        names(aqm$modules$heatmap@outliers@statistic), sep="")
+ggplot(data.frame(sample=names(aqm$modules$heatmap@outliers@statistic), score=aqm$modules$heatmap@outliers@statistic),
+       aes(x=reorder(sample, score), y=score)) +
+  geom_segment(aes(xend=sample), yend=0, colour="grey70") +
+  geom_hline(yintercept=aqm$modules$heatmap@outliers@threshold, colour="red") +
+  geom_point(size=2, colour="grey50") +
+  theme_bw() +
+  coord_flip() +
+  theme(panel.grid.major.y=element_blank(), axis.text=element_text(size=5.5), axis.title=element_text(size=8)) +
+  xlab("SampleID") +
+  ylab("Sum of distances to other arrays")
+@
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[height=0.9\textheight, width=0.75\textwidth]{\Sexpr{aqmBox}}
+  \caption{Box plot of $log_2$-transformed expression values. Four arrays were detected as potential outliers, as indicated with asterisks. \label{fig:aqmBoxplot}}
+\end{figure}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\textwidth]{\Sexpr{aqmMa}}
+  \caption{Selected MA-plots plotted against a pseudo-array consisting of median intensity values for each gene. The top row shows the four most likely outlier arrays, whilst the bottom row shows those most consistent with the median values.\label{fig:aqmMAplot}}
+\end{figure}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.7\textwidth]{\Sexpr{aqmPCA}}
+  \caption{Principal Component Analysis performed on the entire dataset. The four potential outlier arrays cluster near each other as seen on the RHS of the plot.\label{fig:aqmPCAplot}}
+\end{figure}

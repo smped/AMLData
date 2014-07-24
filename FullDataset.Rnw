@@ -1,0 +1,265 @@
+% !Rnw root = MainReportUpdated.Rnw
+
+%% Contains the bulk ofthe analysis for the full dataset
+
+<<modelMatrix>>=
+modMat <- fullMat[,c("Intercept", "Source", paste("SimpKaryo", c("A","C"), sep="."), "FANC.ALL")]
+prbWeights <- beadNum(lBatch.fin) # These are the number of beads
+arrWeights <- arrayWeights(lBatch.fin, design=modMat, weights=prbWeights)
+wtMat <- arrWeights*prbWeights
+@
+
+<<plotWeights, eval=FALSE, include=FALSE, fig.height=10, fig.cap='Array-level weights. Probe-level weights were assigned as the number of beads from which each estimate was taken \\& these are scaled by the array weights. The idealised equal-weighting of 1 is indicated in red.'>>=
+barplot(arrWeights, names.arg=pData(lBatch.fin)$sampleID, ylab="Sample ID", xlab="Weights", horiz=TRUE, xaxt="n", las=2, cex.names=0.5, cex.axis=0.9)
+abline(v=1, col="red", lty=2)
+axis(1, cex.axis=0.9)
+@
+
+\subsection{FANC-ALL Analysis}
+The first stage of the analysis investigated the \Sexpr{length(which(pData(lBatch.fin)$FANC.ALL=="Y"))} samples with a mutation in the FANC:ALL category in comparison to the remainder of the dataset.
+A model matrix was formed using what was decided to be the most simple form, but which still retained the most useful level of annotation.
+Categories included were Source, Simple Karyotype (``Normal", ``Abnormal", ``Complex") \& FANC:ALL, with the baseline expression level implicitly defined as an \textit{Adelaide sample}, with \textit{Normal Karyotype} and \textit{no known mutations} in the FANC:ALL set of genes.
+\textit{Probe-level} weights were assigned as the number of beads from which the intensity estimate was obtained, and \textit{array-level} weights were subsequently estimated using these probe-level weights along with the model matrix.
+A weighted regression model was then fitted to the data, and the coefficients associated with the FANC:ALL mutations were extracted, along with p-values which were adjusted to represent the false discovery rate (FDR).
+Using an FDR cut-off of up to 50\%, no genes were able to be declared as significantly DE as a result of a FANC mutation in this set of genes, however the 10 most highly ranked genes are shown in Table \ref{tab:ALL Results}.
+As there were only \Sexpr{table(newAnnot$FANC.ALL)[3]} samples in this category, the lack of significant results may not be entirely considered as unexpected, particularly given the heterogeneous nature of the samples.
+
+<<fitModelALL>>=
+## Fit the model
+fitALL <- lmFit(exprs(lBatch.fin), design=modMat, weights=wtMat)
+fitALL <- eBayes(fitALL)
+@
+
+<<topTableALL, results='asis', include=TRUE>>=
+topTabALL <- topTable(fitALL, coef="FANC.ALL", n=nFinPrbs)
+nSigALL <- c(length(which(topTabALL$adj.P.Val < 0.05)), length(which(topTabALL$adj.P.Val < 0.1)))
+outALL <- cbind(illuminaMap[rownames(topTabALL),c("Probe_Id", "ILMN_Gene")], topTabALL[,1:5])
+xTabALL <- xtable(outALL[1:10,1:6], caption = "Top 10 significant genes for FANC:ALL mutations (FDR = 56\\%)", label = "tab:ALL Results")
+dig <- c(0,0,0,2,2,2,-2)
+digits(xTabALL) <- dig
+print(xTabALL, 
+      size="footnotesize",
+      caption.placement="top", 
+      include.rownames=FALSE, 
+      include.colnames=FALSE,
+      hline.after=NULL,
+      add.to.row = list(pos = list(-1, 10), 
+                        command = c(paste("\\toprule \n", 
+                                          "Probe ID & Gene & $log_2$FC & Ave. Expr & $T$-stat & $P$-value\\\\\n",
+                                          "\\midrule \n"),
+                                    "\\bottomrule \n")))
+@
+
+<<exportCsvALL>>=
+ensMap <- unlist(as.list(illuminaHumanv4ENSEMBLREANNOTATED))
+entrezMap <- unlist(as.list(illuminaHumanv4ENTREZREANNOTATED))
+out <- cbind(outALL[,1:7], EnsemblID=ensMap[as.character(outALL[,"Probe_Id"])], EntrezID=entrezMap[as.character(outALL[,"Probe_Id"])])
+write.csv(out[order(out[,"t"], decreasing=TRUE),], "FANC.ALL.Genelist.csv")
+@
+
+%\clearpage
+\subsection{FANC-Full Network Analysis}
+<<fitModelFFN>>=
+modMatFFN <- fullMat[,c("Intercept", "Source", paste("SimpKaryo", c("A","C"), sep="."), "FANC.Full.Network")]
+arrWeightsFFN <- arrayWeights(lBatch.fin, design=modMatFFN, weights=prbWeights)
+wtMatFFN <- arrWeightsFFN*prbWeights
+## Fit the model
+fitFFN <- lmFit(exprs(lBatch.fin), design=modMatFFN, weights=wtMatFFN)
+fitFFN <- eBayes(fitFFN)
+@
+<<topTableFFN, results='asis', include=TRUE>>=
+topTabFFN <- topTable(fitFFN, coef="FANC.Full.Network", n=nFinPrbs)
+nSigFFN <- c(length(which(topTabFFN$adj.P.Val < 0.05)), length(which(topTabFFN$adj.P.Val < 0.1)))
+outFFN <- cbind(illuminaMap[rownames(topTabFFN),c("Probe_Id", "ILMN_Gene")], topTabFFN[,1:5])
+xTabFFN <- xtable(outFFN[1:nSigFFN[1],], caption = paste("Top",nSigFFN[1],"significant genes for FANC Full Network mutations"), label = "tab:FFN Results")
+dig <- c(0,0,0,2,2,2,-2, 3)
+digits(xTabFFN) <- dig
+print(xTabFFN, 
+      size="footnotesize",
+      caption.placement="top", 
+      include.rownames=FALSE, 
+      include.colnames=FALSE,
+      hline.after=NULL,
+      add.to.row = list(pos = list(-1, nSigFFN[1]), 
+                        command = c(paste("\\toprule \n", 
+                                          "Probe ID & Gene & $log_2$FC & Ave. Expr & $T$-stat & $P$-value & FDR\\\\\n",
+                                          "\\midrule \n"),
+                                    "\\bottomrule \n")))
+@
+<<exportCsvFFN>>=
+out <- cbind(outFFN[,1:7], EnsemblID=ensMap[as.character(outFFN[,"Probe_Id"])], EntrezID=entrezMap[as.character(outFFN[,"Probe_Id"])])
+write.csv(out[order(out[,"t"], decreasing=TRUE),], "FANC.FFN.Genelist.csv")
+@
+<<volcanoPlot, include=TRUE, fig.height=7, fig.cap="Volcano plot for the model term associated with FANC (Full Network) mutations.">>=
+plot(topTabFFN$logFC, -log10(topTabFFN$P.Value), 
+     pch=16, cex=0.4, 
+     xlab=expression(paste(log[2], " Fold-Change", sep="")), ylab=expression(paste(-log[10]," P-value", sep="")))
+abline(h=-log10(mean(topTabFFN$P.Value[nSigFFN[1]:(nSigFFN[1]+1)])), col="red", lty=2)
+text(min(topTabFFN$logFC), -log10(topTabFFN$P.Value[nSigFFN[1]]), labels="FDR = 0.05", col="red", adj=c(0,0))
+abline(h=-log10(mean(topTabFFN$P.Value[nSigFFN[2]:(nSigFFN[2]+1)])), col="blue", lty=2)
+text(min(topTabFFN$logFC), -log10(topTabFFN$P.Value[nSigFFN[2]]), labels="FDR = 0.1", col="blue", adj=c(0,0))
+@
+Next, the \Sexpr{length(which(pData(lBatch.fin)$FFN=="Y"))} samples with a mutation in the Full FANC Network were investigated.
+A model matrix was formed including the categories \textit{Source, Simple Karyotype} (``Normal", ``Abnormal", ``Complex") \& \textit{FANC Full Network}, with the baseline expression level implicitly defined as an \textit{Adelaide sample}, with \textit{Normal Karyotype} and \textit{no known mutations} in the ``FANC:Full Network" set of genes.
+Probe-level weights were assigned as above, array weights were similarly calculated and a weighted regression model was fitted to the data.Using an FDR threshold of 5\%, \Sexpr{nSigFFN[1]} genes were declared to contain a significant effect due to a mutation in one of the genes contained in the full network associated with FANC (Table \ref{tab:FFN Results} \& Figure \ref{fig:volcanoPlot}). 
+
+\subsubsection{Testing for Interactions Between FANC: Full Network mutants \& Karyotype}
+If any differential expression was specific to a Karyotype, the effects when pooling across Karyotypes as above will be to reduce the significance of the fold-change, so the permissible FDR for candidate genes was increased to 10\% (Figure \ref{fig:volcanoPlot}).
+In order ascertain whether the altered gene expression was specific to a Karyotype, this set of \Sexpr{nSigFFN[2]} candidate genes was then analysed using a more detailed model, which incorporated any potential interactions between the Simple Karyotype and a FANC mutation, effectively setting the Normal Karyotype as the baseline, with a breakdown of the samples for these groupings given in Table \ref{tab:FFNbySimpKaryo}.
+Any significant terms related to the other Karyotypes will thus be in addition to the expected fold-change in the normal Karyotype, and if no additional fold-change is evident it can be assumed that the estimated fold-change for the Normal Karyotype is most accurately modelled as being consistent across all karyotypes.
+FAB groups M1 to M5 were also incorporated into this approach, as were any effects from samples which were not PrimaryAML samples (i.e. PrimaryMDS \& PrimaryMisc).
+Array weights were recalculated based on this expanded model and a weighted regression model was fitted, followed by an automated step-wise process in which any extraneous terms were removed automatically, using the default \textit{step} function in R.
+Coefficients and p-values corresponding to any model terms associated with a FANC mutation were extracted from each model, and p-values were adjusted globally using the Benjamini-Hochberg method.
+
+<<intMatWeights>>=
+modMatInt <- fullMat[,c("Intercept", "Source", "FANC.Full.Network", paste("SimpKaryo", c("A","C"), sep="."), "PrimaryMDS", "PrimaryMisc", paste("M", 0:5, sep=""))]
+arrWeightsInt <- arrayWeights(lBatch.fin, design=modMatInt, weights=prbWeights)
+wtMatInt <- arrWeightsInt*prbWeights
+@
+<<interactionTable, results='asis', include=TRUE>>=
+intFFN <- c(length(intersect(which(modMatInt[,"FANC.Full.Network"]==1), which(rowSums(modMatInt[,c("SimpKaryo.A","SimpKaryo.C")])==0))),
+            length(intersect(which(modMatInt[,"FANC.Full.Network"]==1), which(modMatInt[,"SimpKaryo.A"]==1))),
+            length(intersect(which(modMatInt[,"FANC.Full.Network"]==1), which(modMatInt[,"SimpKaryo.C"]==1))))
+intWT <- c(length(intersect(which(modMatInt[,"FANC.Full.Network"]==0), which(rowSums(modMatInt[,c("SimpKaryo.A","SimpKaryo.C")])==0))),
+            length(intersect(which(modMatInt[,"FANC.Full.Network"]==0), which(modMatInt[,"SimpKaryo.A"]==1))),
+            length(intersect(which(modMatInt[,"FANC.Full.Network"]==0), which(modMatInt[,"SimpKaryo.C"]==1))))
+intTab <- matrix(c(intFFN, sum(intFFN), intWT, sum(intWT), colSums(rbind(intFFN, intWT)), sum(c(intFFN, intWT))),
+                 nrow=3, ncol=4, byrow=TRUE, dimnames=list(FFN=c("Mutant", "Wild Type", "Total"), SimpKaryo=c("Normal","Abnormal","Complex","Total")))
+xTabInt <- xtable(intTab, 
+                  caption = "Breakdown of samples with Full Network mutations by simple karyotype", 
+                  label = "tab:FFNbySimpKaryo",
+                  digits = c(0, 0, 0, 0, 0))
+print(xTabInt, hline.after=c(-1, 0, 2, 3))
+@
+<<stepModels>>=
+# And this
+sigFFN <- rownames(topTabFFN)[which(topTabFFN$adj.P.Val<0.1)]
+lmFFN <- vector("list", length(unique(unlist(sigFFN)))) # Form objects to hold the model co-efficients 
+names(lmFFN) <- sigFFN
+for (gn in sigFFN) {
+  # Form a temporary data object with the probe data & the full model matrix
+  tempDat <- data.frame(exprs = exprs(lBatch.fin)[gn, ], modMatInt) 
+  # Set the initial fully parameterised model, with only the FFN interactions
+  fm <- update(formula(tempDat),~. + 1 + FANC.Full.Network:SimpKaryo.A + FANC.Full.Network:SimpKaryo.C - Intercept) 
+  tempLm <- lm(fm, data=tempDat, weights=wtMatInt[gn, ]) # Evaluate the initial model
+  lmFFN[[gn]] <- step(tempLm) # Keep the final model using an automated step-wise model selection process
+}
+@
+<<extractCoefs>>=
+## Get the coefficients & adjust the p-values for this subset of coefficients
+coefsFFN <- array(NA, dim=c(length(sigFFN), 5, 3), 
+                  dimnames=list(sigFFN, 
+                                c("Estimate", "Std.Error","t", "p", "adj.P"), 
+                                c("FANC.Full.Network", "FANC.Full.Network:SimpKaryo.A", "FANC.Full.Network:SimpKaryo.C")))
+coefsFFN[,1:4,"FANC.Full.Network"] <- t(sapply(lmFFN, FUN=extractCoefs.lm, coef="FANC.Full.Network"))
+coefsFFN[,1:4,"FANC.Full.Network:SimpKaryo.A"] <- t(sapply(lmFFN, FUN=extractCoefs.lm, coef="FANC.Full.Network:SimpKaryo.A"))
+coefsFFN[,1:4,"FANC.Full.Network:SimpKaryo.C"] <- t(sapply(lmFFN, FUN=extractCoefs.lm, coef="FANC.Full.Network:SimpKaryo.C"))
+coefsFFN[,5,] <- p.adjust(coefsFFN[,4,], method="BH")
+intSig <- vector("list", 2)
+intSig[[1]] <- apply(coefsFFN[,5,], FUN=function(x) length(which(x<0.05)), MARGIN=2)
+intSig[[2]] <- apply(coefsFFN[,5,], FUN=function(x) length(which(x<0.1)), MARGIN=2)
+overall <- vector("list", 2)
+overall[[1]] <- which(coefsFFN[,5,1]<0.05)
+overall[[2]] <- which(coefsFFN[,5,1]<0.1)
+karyoA <- vector("list", 2)
+karyoA[[1]] <- which(coefsFFN[,5,2]<0.05)
+karyoA[[2]] <- which(coefsFFN[,5,2]<0.1)
+karyoC <- vector("list", 2)
+karyoC[[1]] <- which(coefsFFN[,5,3]<0.05)
+karyoC[[2]] <- which(coefsFFN[,5,3]<0.1)
+intSig
+sigA <- illuminaMap[names(karyoA[[2]]),][,"Symbol"]
+sigC <- illuminaMap[names(karyoC[[2]]),][,"Symbol"]
+@
+
+\subsubsection{DE genes across all Karyotypes}\label{sec:Karyo}
+<<plotOverallLFC, include=TRUE, fig.height=9.5, fig.width=7, fig.cap='$Log_2$ fold-change for the most significantly DE genes across all karyotypes, after step-wise model fitting'>>=
+ov <- setdiff(names(overall[[2]]), c(names(karyoA[[2]]), names(karyoC[[2]])))
+ggDataFFN <- data.frame(illuminaMap[ov, c("Probe_Id","ILMN_Gene")],
+                        logFC = coefsFFN[ov,"Estimate","FANC.Full.Network"],
+                        sd = coefsFFN[ov,"Std.Error","FANC.Full.Network"],
+                        stringsAsFactors=FALSE)
+ggDataFFN <- ggDataFFN[order(ggDataFFN$logFC, decreasing=FALSE),]
+#ggDataFFN <- ggDataFFN[which(abs(ggDataFFN[,"logFC"])>0.5),] # Keep those with abs(logFC)>0.5
+ggDataFFN$ID <- paste(ggDataFFN$Probe_Id, ggDataFFN$ILMN_Gene, sep=" / ")
+ggDataFFN$ID <- factor(ggDataFFN$ID, levels=ggDataFFN$ID)
+sz=8
+ggplot(ggDataFFN, aes(y=logFC, x=ID, fill=logFC)) +
+  geom_bar(position="dodge", stat="identity") + 
+  geom_errorbar(aes(ymin = logFC-sd, ymax=logFC+sd, width=0.5), position=position_dodge(width=0.9), colour="grey80", size=0.2) +
+  coord_flip() + 
+  scale_fill_gradient2(low="blue", high="red") +
+  scale_x_discrete(labels=ggDataFFN$ID, expand=c(0,0)) +
+  theme(axis.text = element_text(colour = "grey50", size=sz*0.8),
+        axis.line = element_line(colour = "grey80"),
+        axis.title.y = element_blank(),
+        axis.ticks = element_line(colour = "grey80"),
+        axis.title.x = element_text(colour = "grey50", size=sz),
+        #title = element_text(face = "bold"),
+        panel.background = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.grid.major.x = element_line(colour="grey80"),
+        legend.title=element_text(size=sz, colour = "grey50"), legend.text=element_text(size=sz, colour="grey50"),
+        legend.position="bottom", legend.title.align=1,
+        legend.key.width=unit(1,"cm"), legend.key.height=unit(0.5,"cm")) 
+@
+<<heatmap, fig.show='asis', include=TRUE, fig.cap='Estimates of fold-change due to a FANC (Full-Network) mutation wthin each Karyotype. Positive values for $log_2$ fold-change indicate increased expression in FANC mutants. The Illumina probe ID is given with the corrsponding gene name.'>>=
+## NB: These are the genes down to an FDR of 0.1 for a wider net...
+ht <- unique(c(names(sigA), names(sigC)))
+htLFC <- coefsFFN[ht,"Estimate",] + 
+         cbind(0, coefsFFN[unique(c(names(sigA), names(sigC))),"Estimate",1], coefsFFN[unique(c(names(sigA), names(sigC))),"Estimate",1])
+o <- hclust(dist(htLFC))$order
+## Now cluster use ggplot2 to make that look nice
+ID = paste(illuminaMap[ht[o], "Probe_Id"], illuminaMap[ht[o], "ILMN_Gene"], sep=" / ")
+ggHeat <- data.frame(logFC = as.vector(htLFC[o,]), 
+                     Karyotype = factor(c(rep("Normal", length(ht)), rep("Abnormal", length(ht)), rep("Complex", length(ht))), 
+                                        levels=c("Normal", "Abnormal", "Complex")),
+                     ID =factor(ID, levels=ID))
+
+ggplot(ggHeat, aes(y=ID, x=Karyotype, fill=logFC)) +
+  geom_raster() +
+  scale_fill_gradient2(midpoint=0, low="blue", high="red", mid="white") +
+  scale_x_discrete(expand=c(0,0)) +
+  scale_y_discrete(expand=c(0,0)) + 
+  theme(axis.title.y = element_blank(), axis.text=element_text(colour="grey50"))
+@
+Under this step-wise approach and using an FDR threshold of 10\%, \Sexpr{intSig[[2]][1]} genes retained significance for a change in expression due to a FANC mutation, with \Sexpr{intSig[[2]][2]} genes declared as demonstrating DE for FANC mutants in the Abnormal Karyotype, and \Sexpr{intSig[[2]][3]} were detected as showing effects specific to the Complex Karyotype.
+The \Sexpr{length(ov)} genes unique to the Normal Karyotype are presented in Figure \ref{fig:plotOverallLFC}.
+For those with a significant effect in either the Abnormal or Complex Karyotypes, 
+Using an FDR of 10\%, \Sexpr{intSig[[2]][2]} genes were declared as showing significant estimates of fold-change when comparing a FANC (Full-Network) mutant to a Wild-Type sample \textit{within} each Karyotype are shown in Figure \ref{fig:heatmap}.
+In order to verify that the model estimates were truly representative, boxplots of the two genes at the extreme ends of the heatmap are shown in Figure \ref{fig:boxplots}.
+It should be noted that these groupings do not take into account an extraneous effects from other terms, such as FAB status, which may have significant effects and as such the variability within these groups may appear larger than initially expected.
+The complete set of co-efficients from each model is given in the Appendix at the end of this report.
+
+<<boxplots, fig.height=9, include=TRUE, fig.cap="Boxplots of raw expression values for two genes included in the heatmap. For both of these genes the fold-change is specific to the Normal \\& Abnormal Karyotypes, and is not seen in the Complex Karyotype.">>=
+par(mfrow=c(2, 1), mar=c(2,2.5,3.5,1))
+ID <- ht[o][length(ht)]
+temp <- list(Normal.FFN=exprs(lBatch.fin)[ID, intersect(which(newAnnot$FANC.Full.Network=="Y"), which(newAnnot$SimpKaryo=="N"))],
+             Normal.WT=exprs(lBatch.fin)[ID, intersect(which(newAnnot$FANC.Full.Network!="Y"), which(newAnnot$SimpKaryo=="N"))],
+             Abnormal.FFN = exprs(lBatch.fin)[ID, intersect(which(newAnnot$FANC.Full.Network=="Y"), which(newAnnot$SimpKaryo=="A"))],
+             Abnormal.WT = exprs(lBatch.fin)[ID, intersect(which(newAnnot$FANC.Full.Network!="Y"), which(newAnnot$SimpKaryo=="A"))],
+             Complex.FFN = exprs(lBatch.fin)[ID, intersect(which(newAnnot$FANC.Full.Network=="Y"), which(newAnnot$SimpKaryo=="C"))],
+             Complex.WT = exprs(lBatch.fin)[ID, intersect(which(newAnnot$FANC.Full.Network!="Y"), which(newAnnot$SimpKaryo=="C"))])
+boxplot(temp, outline=FALSE, names=rep(c("Mutant","WT"), times=3))
+title(paste(illuminaMap[ID,c("Probe_Id", "ILMN_Gene")], collapse=" / "))
+abline(v=c(2.5,4.5), col="grey", lty=2)
+axis(3, at=c(1,3,5)+0.5, labels=c("Normal", "Abnormal", "Complex"), tick=FALSE, line=-1)
+ID <- ht[o][1]
+temp <- list(Normal.FFN=exprs(lBatch.fin)[ID, intersect(which(newAnnot$FANC.Full.Network=="Y"), which(newAnnot$SimpKaryo=="N"))],
+             Normal.WT=exprs(lBatch.fin)[ID, intersect(which(newAnnot$FANC.Full.Network!="Y"), which(newAnnot$SimpKaryo=="N"))],
+             Abnormal.FFN = exprs(lBatch.fin)[ID, intersect(which(newAnnot$FANC.Full.Network=="Y"), which(newAnnot$SimpKaryo=="A"))],
+             Abnormal.WT = exprs(lBatch.fin)[ID, intersect(which(newAnnot$FANC.Full.Network!="Y"), which(newAnnot$SimpKaryo=="A"))],
+             Complex.FFN = exprs(lBatch.fin)[ID, intersect(which(newAnnot$FANC.Full.Network=="Y"), which(newAnnot$SimpKaryo=="C"))],
+             Complex.WT = exprs(lBatch.fin)[ID, intersect(which(newAnnot$FANC.Full.Network!="Y"), which(newAnnot$SimpKaryo=="C"))])
+boxplot(temp, outline=FALSE, names=rep(c("Mutant","WT"), times=3))
+title(paste(illuminaMap[ID,c("Probe_Id", "ILMN_Gene")], collapse=" / "))
+abline(v=c(2.5,4.5), col="grey", lty=2)
+axis(3, at=c(1,3,5)+0.5, labels=c("Normal", "Abnormal", "Complex"), tick=FALSE, line=-1)
+par(mfrow=c(1,1), mar=c(5,4,4,2)+0.1)
+@
+
+<<modelSummaries, include=FALSE, echo=FALSE>>=
+## Show these in the appendix
+summaries <- lapply(lmFFN[ht[o]], FUN=function(x) {data.frame(summary(x)$coef, Sig=aster(summary(x)$coef[,4]))})
+names(summaries) <- illuminaMap[names(summaries), "ILMN_Gene"]
+@

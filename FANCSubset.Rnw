@@ -1,0 +1,126 @@
+<<fancOnlySamples>>=
+## Extract only the FANC annotated samples from the original batch
+fancSamp <- which(pData(lBatch)$FFN %in% c("Y","N"))
+fancAnnot <- newAnnot[fancSamp,]
+lBatch.fanc <- lBatch.log[,fancSamp]
+lBatch.fanc <- lumiN(lBatch.fanc, method="rsn")
+nChipsFANC <- length(fancSamp)
+@
+
+<<adelaideOnlyFANCSamples, eval=FALSE>>=
+## Explore the idea of looking at just the Adelaide samples
+adSamp <- intersect(which(pData(lBatch)$FFN !=0), which(pData(lBatch)$Source == "Adelaide"))
+adAnnot <- newAnnot[adSamp,]
+lBatch.ad <- lBatch.log[,adSamp]
+lBatch.ad <- lumiN(lBatch.ad, method="rsn")
+(nChipsAd <- length(adSamp))
+# Probe removal
+detPAd <- detectionCall(lBatch.ad,  Th=0.05, type="probe")
+detPrbsAd <- which(detPAd>nChipsAd/2)
+nDetAd <- length(detPrbsAd)
+finPrbsAd <- intersect(goodPrbs, detPrbsAd)
+lBatch.ad <- lBatch.ad[finPrbsAd,]
+modMatAd <- fullMat[adSamp,c("Intercept", "FANC.ALL")]
+prbWAd <- beadNum(lBatch.ad) # These are the number of beads
+arrWAd <- arrayWeights(lBatch.ad, design=modMatAd, weights=prbWAd)
+wtMatAd <- arrWAd*prbWAd
+fitAd <- lmFit(exprs(lBatch.ad), design=modMatAd, weights=wtMatAd)
+fitAd <- eBayes(fitAd)
+topTabAd <- topTable(fitAd, coef="FANC.ALL", n=length(finPrbsAd))
+head(topTabAd)
+## There is just nothing able to be extracted from this subset. I've tried with multiple variations on the model matrix, 
+## including the simplest (1+FANC) to more complex (1+Simp.Karyo+FANC+M1:2 etc) & nothing becomes significant
+## This section of code is not evaulated & is here for historical completeness
+@
+
+<<prbRemoval>>=
+## Redo the DABG
+detPFANC <- detectionCall(lBatch.fanc,  Th=0.05, type="probe")
+detPrbsFANC <- which(detPFANC>nChipsFANC/2)
+nDetFANC <- length(detPrbsFANC)
+finPrbsFANC <- intersect(goodPrbs, detPrbsFANC)
+lBatch.fanc <- lBatch.fanc[finPrbsFANC,]
+@
+
+Noting the \Sexpr{table(newAnnot$FANC.Full.Network)[1]} samples for which the FANC status was unknown, it was considered that these may be a mixture of FANC mutants and non-mutants and would reduce the ability to detect any specific effects due to a FANC mutation.
+These were removed from the dataset and a subsequent analysis was performed using only the \Sexpr{nChipsFANC} samples for which the FANC mutation status was known.
+This smaller dataset was re-normalised using RSN, although the QA steps performed earlier were considered adequate and were not performed again.
+Using the same DABG criteria as beforehand, and removing the probes with poor (or no) matches to the target sequence left \Sexpr{formatC(length(finPrbsFANC), big.mark=",")} probes for downstream analysis.
+
+<<fitModelFANC>>=
+modMatFANC <- fullMat[fancSamp,c("Intercept", "Source", paste("SimpKaryo", c("A","C"), sep="."), "FANC.Full.Network")]
+prbWFANC <- beadNum(lBatch.fanc) # These are the number of beads
+arrWFANC <- arrayWeights(lBatch.fanc, design=modMatFANC, weights=prbWFANC)
+wtMatFANC <- arrWFANC*prbWFANC
+fitFANC <- lmFit(exprs(lBatch.fanc), design=modMatFANC, weights=wtMatFANC)
+fitFANC <- eBayes(fitFANC)
+@
+
+<<topTabFANC>>=
+topTabFANC <- topTable(fitFANC, coef="FANC.Full.Network", n=length(finPrbsFANC))
+out <- topTabFANC[order(topTabFANC[,"t"], decreasing=TRUE),]
+out <- data.frame(illuminaMap[rownames(out), c("Probe_Id","Symbol")], out)
+write.csv(out, "FANCsubset.genelist.csv")
+## None are significant. Compare the estimates across datasets.
+cmnPrbs <- intersect(rownames(fitFFN$coef), rownames(fitFANC$coef))
+@
+
+\par
+The same approach was used as in Section \ref{FullAnalysis} and a minimal model was fit.
+Surprisingly, only one gene (\Sexpr{illuminaMap[rownames(topTabFANC)[1],"ILMN_Gene"]}) was declared as significant using an FDR of 5\%, and extending the FDR to 20\% failed to uncover any further genes.
+Comparison of the baseline expression estimates for each set of samples revealed a surprisingly low correlation (Figure \ref{fig:compareCoefPlot}: $\rho=\Sexpr{format(cor(fitFANC$coef[cmnPrbs,"FANC.Full.Network"], fitFFN$coef[cmnPrbs,"FANC.Full.Network"]), digits=3)}$).
+Although there was some considerable concordance, it was not as consistent as might be expected.
+A comparison of the gene-level, unscaled standard deviation also revealed a surprising increase in variability as a result of leaving out the samples without an annotated FANC status (Figure \ref{fig:compareSigmaPlot}).
+
+<<compareCoefPlot, include=TRUE, fig.width=4, fig.height=4, fig.cap='Comparison of baseline fold-change for the entire set of samples and the subset with annotated FANC status. Axes are indicted in grey \\& the 1:1 unit line is shown in red.'>>=
+plot(fitFFN$coef[cmnPrbs,"FANC.Full.Network"], fitFANC$coef[cmnPrbs,"FANC.Full.Network"], pch=16, cex=0.4, 
+     ylab="FANC Annotated Samples", xlab="Complete Dataset")
+abline(a=0, b=1, col="red")
+abline(h=0, v=0, col="grey")
+@
+
+<<compareSigmaPlot, include=TRUE, fig.width=4, fig.height=4, fig.cap='Comparison of gene-level standard deviation attributable to FANC status for the entire set of samples and the subset with annotated FANC status. The 1:1 unit line is shown in red'>>=
+lims <- range(sapply(list(fit=fitFFN$stdev.unscaled[cmnPrbs, 5], fitFANC=fitFANC$stdev.unscaled[cmnPrbs, 5]), FUN=range))
+plot(fitFFN$stdev.unscaled[cmnPrbs,"FANC.Full.Network"], fitFANC$stdev.unscaled[cmnPrbs,"FANC.Full.Network"], pch=16, cex=0.4, 
+     ylab="FANC Annotated Samples", xlab="Complete Dataset", xlim=lims, ylim=lims)
+abline(a=0, b=1, col="red")
+@
+
+<<fancHistograms, include=TRUE, fig.show='asis', fig.width=3, fig.height=3.5, fig.cap='Histograms showing the distributions of key values', fig.subcap=c('P-Values', '$Log_2$ Fold-change')>>=
+hist(topTabFANC$P.Value, breaks=100, main="", xlab="", cex.lab=0.8, freq=FALSE, cex.axis=0.8)
+hist(topTabFANC$logFC, breaks=100, main="", xlab="", ylab="", freq=FALSE, cex.axis=0.8)
+@
+
+<<clutchingAtStraws, include=TRUE, fig.cap='MA-plot using fitted values for both parameters', fig.height=6, include=TRUE>>=
+## Draw the MA plot & highlight the outliers.
+temp<-intersect(which(abs(topTabFANC$logFC)>log2(2)), which(topTabFANC$P.Value<0.05)) # These are those with a raw p<0.05
+plot(topTabFANC$AveExpr, topTabFANC$logFC, pch=19, cex=0.5, col="grey", 
+     ylab=expression(paste(log[2], " Fold-Change", sep="")), xlab="Average Expression")
+points(topTabFANC$AveExpr[temp], topTabFANC$logFC[temp], pch=19, cex=0.5, col="black")
+abline(h=c(-1,1)*log2(2), col="blue", lty=2)
+@
+<<strawsTable,results='asis', include=TRUE>>=
+straws <- data.frame(illuminaMap[rownames(topTabFANC)[temp], c("Probe_Id","ILMN_Gene")], topTabFANC[rownames(topTabFANC)[temp], c("logFC", "AveExpr", "t", "P.Value")])
+strawsXTab <- xtable(straws[order(straws$logFC, decreasing=TRUE),], caption = "Probes with possible outlier values for $log_2$ fold-change, and with raw P-values \\textless 0.05", label="tab:straws")
+digits(strawsXTab) <- c(0,0,0,2,2,2,-2)
+print(strawsXTab, 
+      size="small",
+      caption.placement="top", 
+      include.rownames=FALSE, 
+      include.colnames=FALSE,
+      hline.after=NULL,
+      add.to.row = list(pos = list(-1, nrow(straws)), 
+                        command = c(paste("\\toprule \n", 
+                                          "Probe & Gene & $log_2FC$ & Ave. Expr. & $T$-stat & $P$-value \\\\\n",
+                                          "\\midrule \n"),
+                                    "\\bottomrule \n")))
+@
+
+To complete the investigation of this data subset, the histograms of the raw P-values and log fold-change estimates were plotted (Figure \ref{fig:fancHistograms}).
+Revealingly, the histogram of the P-values showed a strikingly uniform distribution (Figure \ref{fig:fancHistograms}a), which implies that this represents a complete sample where everything is acting under the null hypothesis $H_0: log_2FC=0$.
+In order to find at least a handful of genes which may be worthy of follow up post-analysis, the average $log_2$ expression values were plotted against the predicted $log_2$ fold-change and potential outliers against the local distribution of $log_2$ fold-change values expected due to a FANC mutation were inspected (Figure \ref{fig:clutchingAtStraws}).
+A small sample of \Sexpr{length(temp)} probes were considered as potential outliers by nature of the fact that the raw P-values would be considered significant if taken in isolation (i.e. raw $P<0.05$), and the estimated log fold-change was relatively large (\textgreater $log_2(1.5)$).
+These points are highlighted in black in Figure \ref{fig:clutchingAtStraws} with details given in Table \ref{tab:straws}.
+However, it should be noted that the FDR for the analysis of this data subset exceeded 50\% within the first two highly ranked genes, and as such the possibility that these genes are spurious artefacts of the analytic process is very real.
+
+

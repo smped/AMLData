@@ -1,0 +1,67 @@
+%% Load the annotations & the data
+
+<<loadAnnotations, cache=FALSE>>=
+## Check the new annotations sent through
+newFile <- file.path("rawData", "Header data.txt") # The original file
+transAnnot <- file.path("data", "Header20140707.txt") # Where to move it to
+transposeTxt(newFile, outFile=transAnnot, sep="\t", row.names=FALSE) # Transpose it
+newAnnot <- read.delim(transAnnot, skip=2, header=TRUE) # Now load it
+## There are some fields & samples we can remove to clean the dataset up a little
+newAnnot <- newAnnot[,-which(colnames(newAnnot) %in% c("X", "Cytogenetics", "Genetic.Group.Risk.Stratification..ELN."))]
+## We also need to remove those with an Unknown Source as there is no FANC, C1-5, MBD, Seq.*, PraimaryAML, PrimaryMDS, PrimaryMisc, Age or Sex info
+newAnnot <- newAnnot[-which(newAnnot$Source=="Unknown"),]
+newAnnot <- newAnnot[-which(newAnnot$SimpKaryo=="Unknown"),] ## Remove the Unknown from SimpKaryo. We lose one sample with a FANC mutation by doing this.
+allCategories <- colnames(newAnnot)
+
+## How many samples are left?
+(nChips <- nrow(newAnnot)) # [1] 139
+
+## Tidy any annotations that need it
+newAnnot$KLF5..Simple.[grep("HIGH", newAnnot$KLF5..Simple.)] <- "HIGH" # Trim the whitespace from that odd KLF5 annotation
+newAnnot$PrimaryMDS[which(newAnnot$PrimaryMDS=="NN")] <- "N" # Get rid of the "NN" entries from PrimaryMDS
+newAnnot$PrimaryMisc[which(newAnnot$PrimaryMisc=="NN")] <- "N" # Get rid of the "NN" entries from PrimaryMisc
+
+# Tidy up any factors which have lost levels due to sample removal & annotation tidying up
+for (i in 1:ncol(newAnnot)){ 
+  if(is.factor(newAnnot[,i])) newAnnot[,i] <- newAnnot[,i][,drop=TRUE]
+}
+
+## Re-label the MicroarrayIDinDB field to be a character
+newAnnot$MicroarrayIDinDB <- paste(substr(rep("X_00",nChips), start=1, stop=5-nchar(newAnnot$MicroarrayIDinDB)), newAnnot$MicroarrayIDinDB, sep="")
+useArr <- newAnnot[,"MicroarrayIDinDB"]
+@
+
+<<lumiBatch>>=
+rawPrbFile <- file.path("data","Not BG Corrected", "iltp5031_Sample_Probe_Profile - Copy.txt")
+lBatch <- lumiR.batch(rawPrbFile, lib.mapping="lumiHumanIDMapping")
+nFull <- nrow(pData(lBatch))
+ID <- as.character(phenoData(lBatch)$sampleID)
+samples <- paste("X", substr(paste("00", ID, sep=""), start=nchar(ID), stop=nchar(ID)+2), sep="_") # Rename samples as characters to avoid accidental errors
+lBatch <- lBatch[,samples %in% useArr] # Remove the samples we don't want
+## And the control probe informaton
+cntPrbFile <- file.path("data", "Not BG Corrected", "Sample table and control data", "control probe profile.txt")
+cntData <- read.delim(cntPrbFile)
+cntData <- cntData[,c(1,2, grep("AVG_Signal", colnames(cntData)))]
+cntData <- cntData[,c(1,2, which(samples %in% useArr)+2)] # Remove the samples we don't want
+colnames(cntData) <- c("TargetID", "ProbeID", phenoData(lBatch)$sampleID)
+lBatch <- addControlData2lumi(cntData, lBatch)
+## Add some key annotations for the QA report
+phenoData(lBatch)$Source <- newAnnot$Source
+phenoData(lBatch)$FANC.ALL <- newAnnot$FANC.ALL
+phenoData(lBatch)$FFN <- newAnnot$FANC.Full.Network
+phenoData(lBatch)$FANC.Core.Anchor.ID <- newAnnot$FANC.Core.Anchor.ID
+phenoData(lBatch)$sampleID <- useArr
+sampleNames(lBatch) <- useArr
+@
+
+The complete dataset consists of \Sexpr{nFull} Illumina \Sexpr{getChipInfo(lBatch)$chipVersion} Bead Arrays, with annotations across \Sexpr{length(allCategories)-1} categories. Notably, \Sexpr{length(which(newAnnot$FANC.Full.Network=="Y"))} samples were annotated as having mutations in the Full FANC Network, \Sexpr{length(which(newAnnot$FANC.ALL=="Y"))} samples were annotated as having a mutation in any of the FANC genes within the network, and \Sexpr{length(which(newAnnot$FANC.Core.Anchor.ID=="Y"))} samples were annotated as containing mutations in the FANC Core/Anchor/ID set of genes.
+
+<<annotFields, echo=TRUE>>=
+allCategories
+@
+
+Probe-level data was loaded using the R package \textit{lumi} and Illumina Probe identifiers were also converted to nuID labels for compatibility with the analysis packages.
+Samples were removed from the dataset if the Source was unknown or if the Simple Karyotype was unknown, as the level of annotation for these samples was particularly incomplete, leaving a total of \Sexpr{nChips} arrays for further analysis.
+In order to avoid potential confusion between column numbers and sample identifiers, samples were additionally renamed with an ``\textit{X_}" prefix followed by the sample ID as a 3-digit number, e.g. sample 1 was renamed as sample X_001.
+Samples will be referred to in this format in all subsequent sections.
+This report also uses the updated header files, provided on 27-June-2014.

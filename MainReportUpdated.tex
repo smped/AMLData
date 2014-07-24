@@ -1,0 +1,1247 @@
+\documentclass{article}\usepackage{knitr}
+\usepackage{underscore}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{subfig}
+\usepackage{titling}
+\newcommand{\subtitle}[1]{%
+  \posttitle{%
+    \par\end{center}
+    \begin{center}\large#1\end{center}
+    \vskip0.5em}%
+}
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+\begin{document}
+
+\title{Analysis of FANC-AML Illumina Dataset}
+\subtitle{Using Updated Header Files as of 27-Jun-2014}
+\author{Steve Pederson\\
+        Adelaide University\\
+        Bioinformatics Centre}
+\maketitle
+
+
+
+
+
+\section{Data Description}
+
+%% Load the annotations & the data
+
+
+
+
+
+The complete dataset consists of 168 Illumina HumanHT12_V4_0_R2_15002873_B Bead Arrays, with annotations across 36 categories. Notably, 34 samples were annotated as having mutations in the Full FANC Network, 10 samples were annotated as having a mutation in any of the FANC genes within the network, and 3 samples were annotated as containing mutations in the FANC Core/Anchor/ID set of genes.
+
+
+
+Probe-level data was loaded using the R package \textit{lumi} and Illumina Probe identifiers were also converted to nuID labels for compatibility with the analysis packages.
+Samples were removed from the dataset if the Source was unknown or if the Simple Karyotype was unknown, as the level of annotation for these samples was particularly incomplete, leaving a total of 139 arrays for further analysis.
+In order to avoid potential confusion between column numbers and sample identifiers, samples were additionally renamed with an ``\textit{X_}" prefix followed by the sample ID as a 3-digit number, e.g. sample 1 was renamed as sample X_001.
+Samples will be referred to in this format in all subsequent sections.
+This report also uses the updated header files, provided on 27-June-2014.
+
+\clearpage
+\section{Quality Assessment}
+
+% !Rnw root = MainReport.Rnw
+
+%% Does all the QA stages for the dataset
+
+
+
+
+
+Array quality on this set of 139 arrays was assessed using the R package \textit{arrayQualityMetrics}. 
+Distances between arrays were calculated by taking the mean of the absolute values of the differences in $log_2$ intensities between a pair of arrays (Figures \ref{fig:distPlot} \& \ref{fig:distOutPlot}).
+The first four arrays shown in Figure \ref{fig:distPlot} were also detected as potential outlier arrays using box plots of $log_2$-transformed intensity data (Figure \ref{fig:aqmBoxplot}).
+The same four arrays showed a clear discrepancy in the centre of their expression range when compared to a pseudo-array based on the median values for each gene (top row, Figure \ref{fig:aqmMAplot}).
+Similarly the PCA plot showed these four arrays clustering near each other on the RHS of the plot (Figure \ref{fig:aqmPCAplot}).
+
+\par
+\par
+As these four samples (X_125, X_126, X_140 \& X_164) were consistently called as outliers they were subsequently removed from the dataset as they were considered likely to introduce non-biological variability to the data, leaving a total of 135 arrays for downstream analysis.
+It was also noted that one of the omitted arrays corresponded to a sample with mutation in the Core/Anchor/ID set of genes, which reduced this category to an effective sample-size of 2.
+However the omission of an array of questionable quality was considered to be the most prudent decision, as inclusion of such an array in a category with so few samples may excessively contribute to the final results, and lead to less reliable conclusions.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{aqmReport/hmcrop.pdf}
+  \caption{Heat map showing distances between all pairs of arrays. Note the top four arrays have consistently larger pair-wise distances across the dataset, with exception of the arrays making the first 7 columns. Four of these were also marked as potential outliers. The sample source is indicated on the RHS in red/blue, along with FANC Full Network status in green/orange/light-blue. \label{fig:distPlot}}
+\end{figure}
+
+\begin{knitrout}
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{figure}[]
+
+
+{\centering \includegraphics[width=\maxwidth]{figure/distOutPlot} 
+
+}
+
+\caption[Distances between arrays]{Distances between arrays. Potential outlier arrays are shown at the top with larger distances. The threshold for outlier detection is shown in red.\label{fig:distOutPlot}}
+\end{figure}
+
+
+\end{knitrout}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[height=0.9\textheight, width=0.75\textwidth]{aqmReport/boxcrop.pdf}
+  \caption{Box plot of $log_2$-transformed expression values. Four arrays were detected as potential outliers, as indicated with asterisks. \label{fig:aqmBoxplot}}
+\end{figure}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\textwidth]{aqmReport/macrop.pdf}
+  \caption{Selected MA-plots plotted against a pseudo-array consisting of median intensity values for each gene. The top row shows the four most likely outlier arrays, whilst the bottom row shows those most consistent with the median values.\label{fig:aqmMAplot}}
+\end{figure}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.7\textwidth]{aqmReport/pcacrop.pdf}
+  \caption{Principal Component Analysis performed on the entire dataset. The four potential outlier arrays cluster near each other as seen on the RHS of the plot.\label{fig:aqmPCAplot}}
+\end{figure}
+
+\clearpage
+\section{Data Pre-Processing}
+
+%% There are two choices for rewriting this.
+%% 1 - rerun with BG-corrected data, or
+%% 2 - BG correct the data using the normexp convolution & go from there...
+
+
+
+
+
+
+
+
+
+
+
+
+
+The data was background-corrected using the Negative Control Probes to estimate the parameters of an RMA-like model in the R package \textit{mbcb}.
+Background-corrected data was $log_2$-transformed to help minimise the impact of increasing variance with increasing signal, and the dataset was normalised using Robust Spline Normalisation (RSN).
+Of the original 47,274 probes on the array, the 12,835 probes with sequences considered to be poor matches for the corresponding target, or with no matches were removed.
+Detection Above Background (DABG) was also performed and probes with detection p-values \textgreater 0.05 in more than half of the samples were removed leaving a total of 15,484 probes for downstream analysis.
+
+\clearpage
+\section{Annotation of the Dataset}
+
+
+As the set of annotations were categorical variables, these were transformed to binary variables and correlations between them were observed (Figure \ref{fig:plotCorrelations}). 
+Any unassigned or unknown values within a category were treated as baseline, or equivalent to wild-type.
+It should also be noted that there were 56 unassigned samples for all FANC mutations.
+Of the remaining 79 samples, 46 were classified as wild-type across the FANC ``Full Network" \& 33 were classified as mutants somewhere within the network.
+For the FANC Core/Anchor/ID set of genes, only 2 were mutants, whilst for the FANC.All category 9 contained mutations.
+For the remaining categories, any with less than 5 annotated observations were not considered for any stages of the modelling. 
+The expected negative correlations were observed between mutually exclusive variables, such as GADD45 High \& GADD45 Low, as well as PrimaryAML and the alternatives PrimaryMDS \& PrimaryMisc. 
+An unexpected positive correlation was also evident between METC and both C1 \& C5.
+The difference in cell preparation protocols between samples from Adelaide and ALLG was previously noted \& this term was included in all downstream analysis.
+
+\begin{knitrout}
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{figure}[]
+
+
+{\centering \includegraphics[width=\maxwidth]{figure/plotCorrelations} 
+
+}
+
+\caption[Heatmap of correlations between annotation categories using binary variables to indicate categories]{Heatmap of correlations between annotation categories using binary variables to indicate categories\label{fig:plotCorrelations}}
+\end{figure}
+
+
+\end{knitrout}
+
+\clearpage
+\section{Analysis}
+\label{FullAnalysis}
+
+% !Rnw root = MainReportUpdated.Rnw
+
+%% Contains the bulk ofthe analysis for the full dataset
+
+
+
+
+
+\subsection{FANC-ALL Analysis}
+The first stage of the analysis investigated the 9 samples with a mutation in the FANC:ALL category in comparison to the remainder of the dataset.
+A model matrix was formed using what was decided to be the most simple form, but which still retained the most useful level of annotation.
+Categories included were Source, Simple Karyotype (``Normal", ``Abnormal", ``Complex") \& FANC:ALL, with the baseline expression level implicitly defined as an \textit{Adelaide sample}, with \textit{Normal Karyotype} and \textit{no known mutations} in the FANC:ALL set of genes.
+\textit{Probe-level} weights were assigned as the number of beads from which the intensity estimate was obtained, and \textit{array-level} weights were subsequently estimated using these probe-level weights along with the model matrix.
+A weighted regression model was then fitted to the data, and the coefficients associated with the FANC:ALL mutations were extracted, along with p-values which were adjusted to represent the false discovery rate (FDR).
+Using an FDR cut-off of up to 50\%, no genes were able to be declared as significantly DE as a result of a FANC mutation in this set of genes, however the 10 most highly ranked genes are shown in Table \ref{tab:ALL Results}.
+As there were only 9 samples in this category, the lack of significant results may not be entirely considered as unexpected, particularly given the heterogeneous nature of the samples.
+
+
+
+% latex table generated in R 3.1.1 by xtable 1.7-3 package
+% Thu Jul 17 16:45:53 2014
+\begin{table}[ht]
+\centering
+\caption{Top 10 significant genes for FANC:ALL mutations (FDR = 56\%)} 
+\label{tab:ALL Results}
+{\footnotesize
+\begin{tabular}{llrrrr}
+  \toprule 
+ Probe ID & Gene & $log_2$FC & Ave. Expr & $T$-stat & $P$-value\\
+ \midrule 
+ ILMN\_2386269 & U2AF1L4 & 0.57 & 5.67 & 3.74 & 2.68E-04 \\ 
+  ILMN\_1853116 & HS.325015 & -0.54 & 5.21 & -3.80 & 2.20E-04 \\ 
+  ILMN\_3251383 & CCDC74B & -0.81 & 4.77 & -3.99 & 1.07E-04 \\ 
+  ILMN\_1797025 & LOC651380 & 0.54 & 5.56 & 3.58 & 4.83E-04 \\ 
+  ILMN\_2352724 & PIGN & 0.40 & 7.60 & 3.56 & 5.07E-04 \\ 
+  ILMN\_1681203 & TWF1 & -0.57 & 5.12 & -3.55 & 5.29E-04 \\ 
+  ILMN\_1805812 & TOR1A & 0.58 & 9.20 & 3.66 & 3.69E-04 \\ 
+  ILMN\_1752895 & STX8 & 0.49 & 8.64 & 3.48 & 6.71E-04 \\ 
+  ILMN\_3245314 & LOC100133999 & 1.07 & 6.89 & 3.63 & 4.10E-04 \\ 
+  ILMN\_2159322 & SLK & -0.64 & 7.74 & -3.58 & 4.83E-04 \\ 
+   \bottomrule 
+\end{tabular}
+}
+\end{table}
+
+
+
+
+%\clearpage
+\subsection{FANC-Full Network Analysis}
+
+% latex table generated in R 3.1.1 by xtable 1.7-3 package
+% Thu Jul 17 16:47:09 2014
+\begin{table}[ht]
+\centering
+\caption{Top 17 significant genes for FANC Full Network mutations} 
+\label{tab:FFN Results}
+{\footnotesize
+\begin{tabular}{llrrrrr}
+  \toprule 
+ Probe ID & Gene & $log_2$FC & Ave. Expr & $T$-stat & $P$-value & FDR\\
+ \midrule 
+ ILMN\_1730005 & RFP & 0.42 & 7.17 & 5.19 & 7.58E-07 & 0.012 \\ 
+  ILMN\_1730504 & AGPAT4 & -1.14 & 6.74 & -4.93 & 2.42E-06 & 0.019 \\ 
+  ILMN\_1886595 & HS.130980 & 0.40 & 4.74 & 4.83 & 3.64E-06 & 0.019 \\ 
+  ILMN\_1813091 & ARL1 & 0.33 & 7.63 & 4.66 & 7.57E-06 & 0.029 \\ 
+  ILMN\_1697115 & FLJ12355 & 0.58 & 6.56 & 4.52 & 1.34E-05 & 0.032 \\ 
+  ILMN\_1903568 & HS.294603 & 0.40 & 9.50 & 4.50 & 1.44E-05 & 0.032 \\ 
+  ILMN\_1701958 & DLG1 & -0.38 & 5.23 & -4.50 & 1.46E-05 & 0.032 \\ 
+  ILMN\_1692896 & JMJD4 & 0.41 & 5.81 & 4.37 & 2.48E-05 & 0.038 \\ 
+  ILMN\_1657153 & ACTR3 & -0.60 & 9.59 & -4.37 & 2.48E-05 & 0.038 \\ 
+  ILMN\_1768391 & ARL4C & -0.74 & 5.87 & -4.36 & 2.59E-05 & 0.038 \\ 
+  ILMN\_1799860 & PIGM & 0.40 & 8.55 & 4.33 & 2.89E-05 & 0.038 \\ 
+  ILMN\_2379835 & SUMO1 & -1.06 & 5.83 & -4.33 & 2.93E-05 & 0.038 \\ 
+  ILMN\_1796968 & INTS5 & 0.45 & 6.56 & 4.29 & 3.36E-05 & 0.040 \\ 
+  ILMN\_1911059 & HS.131041 & 0.73 & 5.64 & 4.25 & 3.93E-05 & 0.043 \\ 
+  ILMN\_1803464 & PHTF1 & 0.43 & 7.74 & 4.22 & 4.49E-05 & 0.043 \\ 
+  ILMN\_1772124 & ATRN & 0.51 & 6.68 & 4.22 & 4.42E-05 & 0.043 \\ 
+  ILMN\_1657495 & MLEC & 0.46 & 9.89 & 4.17 & 5.45E-05 & 0.050 \\ 
+   \bottomrule 
+\end{tabular}
+}
+\end{table}
+
+
+\begin{knitrout}
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{figure}[]
+
+
+{\centering \includegraphics[width=\maxwidth]{figure/volcanoPlot} 
+
+}
+
+\caption[Volcano plot for the model term associated with FANC (Full Network) mutations]{Volcano plot for the model term associated with FANC (Full Network) mutations.\label{fig:volcanoPlot}}
+\end{figure}
+
+
+\end{knitrout}
+Next, the 33 samples with a mutation in the Full FANC Network were investigated.
+A model matrix was formed including the categories \textit{Source, Simple Karyotype} (``Normal", ``Abnormal", ``Complex") \& \textit{FANC Full Network}, with the baseline expression level implicitly defined as an \textit{Adelaide sample}, with \textit{Normal Karyotype} and \textit{no known mutations} in the ``FANC:Full Network" set of genes.
+Probe-level weights were assigned as above, array weights were similarly calculated and a weighted regression model was fitted to the data.Using an FDR threshold of 5\%, 17 genes were declared to contain a significant effect due to a mutation in one of the genes contained in the full network associated with FANC (Table \ref{tab:FFN Results} \& Figure \ref{fig:volcanoPlot}). 
+
+\subsubsection{Testing for Interactions Between FANC: Full Network mutants \& Karyotype}
+If any differential expression was specific to a Karyotype, the effects when pooling across Karyotypes as above will be to reduce the significance of the fold-change, so the permissible FDR for candidate genes was increased to 10\% (Figure \ref{fig:volcanoPlot}).
+In order ascertain whether the altered gene expression was specific to a Karyotype, this set of 135 candidate genes was then analysed using a more detailed model, which incorporated any potential interactions between the Simple Karyotype and a FANC mutation, effectively setting the Normal Karyotype as the baseline, with a breakdown of the samples for these groupings given in Table \ref{tab:FFNbySimpKaryo}.
+Any significant terms related to the other Karyotypes will thus be in addition to the expected fold-change in the normal Karyotype, and if no additional fold-change is evident it can be assumed that the estimated fold-change for the Normal Karyotype is most accurately modelled as being consistent across all karyotypes.
+FAB groups M1 to M5 were also incorporated into this approach, as were any effects from samples which were not PrimaryAML samples (i.e. PrimaryMDS \& PrimaryMisc).
+Array weights were recalculated based on this expanded model and a weighted regression model was fitted, followed by an automated step-wise process in which any extraneous terms were removed automatically, using the default \textit{step} function in R.
+Coefficients and p-values corresponding to any model terms associated with a FANC mutation were extracted from each model, and p-values were adjusted globally using the Benjamini-Hochberg method.
+
+
+% latex table generated in R 3.1.1 by xtable 1.7-3 package
+% Thu Jul 17 13:23:58 2014
+\begin{table}[ht]
+\centering
+\begin{tabular}{rrrrr}
+  \hline
+ & Normal & Abnormal & Complex & Total \\ 
+  \hline
+Mutant & 13 & 12 & 8 & 33 \\ 
+  Wild Type & 48 & 36 & 18 & 102 \\ 
+   \hline
+Total & 61 & 48 & 26 & 135 \\ 
+   \hline
+\end{tabular}
+\caption{Breakdown of samples with Full Network mutations by simple karyotype} 
+\label{tab:FFNbySimpKaryo}
+\end{table}
+
+
+
+
+\subsubsection{DE genes across all Karyotypes}\label{sec:Karyo}
+\begin{knitrout}
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{figure}[]
+
+
+{\centering \includegraphics[width=\maxwidth]{figure/plotOverallLFC} 
+
+}
+
+\caption[$Log_2$ fold-change for the most significantly DE genes across all karyotypes, after step-wise model fitting]{$Log_2$ fold-change for the most significantly DE genes across all karyotypes, after step-wise model fitting\label{fig:plotOverallLFC}}
+\end{figure}
+
+
+\end{knitrout}
+\begin{knitrout}
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{figure}[]
+
+
+{\centering \includegraphics[width=\maxwidth]{figure/heatmap} 
+
+}
+
+\caption[Estimates of fold-change due to a FANC (Full-Network) mutation wthin each Karyotype]{Estimates of fold-change due to a FANC (Full-Network) mutation wthin each Karyotype. Positive values for $log_2$ fold-change indicate increased expression in FANC mutants. The Illumina probe ID is given with the corrsponding gene name.\label{fig:heatmap}}
+\end{figure}
+
+
+\end{knitrout}
+Under this step-wise approach and using an FDR threshold of 10\%, 125 genes retained significance for a change in expression due to a FANC mutation, with 5 genes declared as demonstrating DE for FANC mutants in the Abnormal Karyotype, and 21 were detected as showing effects specific to the Complex Karyotype.
+The 105 genes unique to the Normal Karyotype are presented in Figure \ref{fig:plotOverallLFC}.
+For those with a significant effect in either the Abnormal or Complex Karyotypes, 
+Using an FDR of 10\%, 5 genes were declared as showing significant estimates of fold-change when comparing a FANC (Full-Network) mutant to a Wild-Type sample \textit{within} each Karyotype are shown in Figure \ref{fig:heatmap}.
+In order to verify that the model estimates were truly representative, boxplots of the two genes at the extreme ends of the heatmap are shown in Figure \ref{fig:boxplots}.
+It should be noted that these groupings do not take into account an extraneous effects from other terms, such as FAB status, which may have significant effects and as such the variability within these groups may appear larger than initially expected.
+The complete set of co-efficients from each model is given in the Appendix at the end of this report.
+
+\begin{knitrout}
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{figure}[]
+
+
+{\centering \includegraphics[width=\maxwidth]{figure/boxplots} 
+
+}
+
+\caption[Boxplots of raw expression values for two genes included in the heatmap]{Boxplots of raw expression values for two genes included in the heatmap. For both of these genes the fold-change is specific to the Normal \& Abnormal Karyotypes, and is not seen in the Complex Karyotype.\label{fig:boxplots}}
+\end{figure}
+
+
+\end{knitrout}
+
+
+
+\clearpage
+\subsection{Subset of Samples With Known FANC Status}
+
+
+
+
+
+
+
+Noting the 56 samples for which the FANC status was unknown, it was considered that these may be a mixture of FANC mutants and non-mutants and would reduce the ability to detect any specific effects due to a FANC mutation.
+These were removed from the dataset and a subsequent analysis was performed using only the 79 samples for which the FANC mutation status was known.
+This smaller dataset was re-normalised using RSN, although the QA steps performed earlier were considered adequate and were not performed again.
+Using the same DABG criteria as beforehand, and removing the probes with poor (or no) matches to the target sequence left 15,496 probes for downstream analysis.
+
+
+
+
+
+\par
+The same approach was used as in Section \ref{FullAnalysis} and a minimal model was fit.
+Surprisingly, only one gene (BTRC) was declared as significant using an FDR of 5\%, and extending the FDR to 20\% failed to uncover any further genes.
+Comparison of the baseline expression estimates for each set of samples revealed a surprisingly low correlation (Figure \ref{fig:compareCoefPlot}: $\rho=0.492$).
+Although there was some considerable concordance, it was not as consistent as might be expected.
+A comparison of the gene-level, unscaled standard deviation also revealed a surprising increase in variability as a result of leaving out the samples without an annotated FANC status (Figure \ref{fig:compareSigmaPlot}).
+
+\begin{knitrout}
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{figure}[]
+
+
+{\centering \includegraphics[width=\maxwidth]{figure/compareCoefPlot} 
+
+}
+
+\caption[Comparison of baseline fold-change for the entire set of samples and the subset with annotated FANC status]{Comparison of baseline fold-change for the entire set of samples and the subset with annotated FANC status. Axes are indicted in grey \& the 1:1 unit line is shown in red.\label{fig:compareCoefPlot}}
+\end{figure}
+
+
+\end{knitrout}
+
+\begin{knitrout}
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{figure}[]
+
+
+{\centering \includegraphics[width=\maxwidth]{figure/compareSigmaPlot} 
+
+}
+
+\caption[Comparison of gene-level standard deviation attributable to FANC status for the entire set of samples and the subset with annotated FANC status]{Comparison of gene-level standard deviation attributable to FANC status for the entire set of samples and the subset with annotated FANC status. The 1:1 unit line is shown in red\label{fig:compareSigmaPlot}}
+\end{figure}
+
+
+\end{knitrout}
+
+\begin{knitrout}
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{figure}[]
+\subfloat[P-Values\label{fig:fancHistograms1}]{
+
+{\centering \includegraphics[width=\maxwidth]{figure/fancHistograms1} 
+
+}
+
+}
+\subfloat[$Log_2$ Fold-change\label{fig:fancHistograms2}]{
+
+{\centering \includegraphics[width=\maxwidth]{figure/fancHistograms2} 
+
+}
+
+}\caption[Histograms showing the distributions of key values]{Histograms showing the distributions of key values\label{fig:fancHistograms}}
+\end{figure}
+
+
+\end{knitrout}
+
+\begin{knitrout}
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{figure}[]
+
+
+{\centering \includegraphics[width=\maxwidth]{figure/clutchingAtStraws} 
+
+}
+
+\caption[MA-plot using fitted values for both parameters]{MA-plot using fitted values for both parameters\label{fig:clutchingAtStraws}}
+\end{figure}
+
+
+\end{knitrout}
+% latex table generated in R 3.1.1 by xtable 1.7-3 package
+% Thu Jul 17 13:25:16 2014
+\begin{table}[ht]
+\centering
+\caption{Probes with possible outlier values for $log_2$ fold-change, and with raw P-values \textless 0.05} 
+\label{tab:straws}
+{\small
+\begin{tabular}{llrrrr}
+  \toprule 
+ Probe & Gene & $log_2FC$ & Ave. Expr. & $T$-stat & $P$-value \\
+ \midrule 
+ ILMN\_2091454 & HBM & 1.42 & 7.96 & 2.65 & 9.89E-03 \\ 
+  ILMN\_1815527 & HBD & 1.39 & 10.88 & 3.26 & 1.66E-03 \\ 
+  ILMN\_1652199 & LOC642113 & 1.35 & 9.41 & 3.49 & 8.05E-04 \\ 
+  ILMN\_2084825 & HBG2 & 1.29 & 9.72 & 2.10 & 3.86E-02 \\ 
+  ILMN\_1808238 & RBPMS2 & 1.29 & 5.33 & 3.10 & 2.72E-03 \\ 
+  ILMN\_1674228 & LOC651751 & 1.29 & 7.56 & 3.87 & 2.29E-04 \\ 
+  ILMN\_1739508 & LOC652493 & 1.27 & 9.68 & 3.59 & 5.73E-04 \\ 
+  ILMN\_3240375 & LOC647506 & 1.25 & 8.47 & 3.52 & 7.39E-04 \\ 
+  ILMN\_1683093 & GYPB & 1.18 & 6.49 & 2.48 & 1.53E-02 \\ 
+  ILMN\_1804601 & LOC649923 & 1.16 & 7.38 & 2.70 & 8.50E-03 \\ 
+  ILMN\_3240144 & HBA1 & 1.13 & 11.52 & 2.48 & 1.55E-02 \\ 
+  ILMN\_1676088 & MSRB3 & 1.11 & 9.15 & 3.23 & 1.82E-03 \\ 
+  ILMN\_1710280 & TUBB1 & 1.07 & 5.73 & 3.03 & 3.30E-03 \\ 
+  ILMN\_1756439 & SCRN1 & 1.06 & 6.32 & 2.47 & 1.56E-02 \\ 
+  ILMN\_1767281 & PPBP & 1.04 & 7.94 & 2.77 & 6.93E-03 \\ 
+  ILMN\_1763516 & SPINK2 & 1.02 & 9.65 & 2.04 & 4.45E-02 \\ 
+  ILMN\_1685608 & NPTX2 & -1.04 & 5.68 & -2.14 & 3.58E-02 \\ 
+  ILMN\_1810289 & FER1L3 & -1.05 & 6.18 & -2.40 & 1.86E-02 \\ 
+  ILMN\_2404154 & SERPINA1 & -1.06 & 8.10 & -2.11 & 3.78E-02 \\ 
+   \bottomrule 
+\end{tabular}
+}
+\end{table}
+
+
+To complete the investigation of this data subset, the histograms of the raw P-values and log fold-change estimates were plotted (Figure \ref{fig:fancHistograms}).
+Revealingly, the histogram of the P-values showed a strikingly uniform distribution (Figure \ref{fig:fancHistograms}a), which implies that this represents a complete sample where everything is acting under the null hypothesis $H_0: log_2FC=0$.
+In order to find at least a handful of genes which may be worthy of follow up post-analysis, the average $log_2$ expression values were plotted against the predicted $log_2$ fold-change and potential outliers against the local distribution of $log_2$ fold-change values expected due to a FANC mutation were inspected (Figure \ref{fig:clutchingAtStraws}).
+A small sample of 19 probes were considered as potential outliers by nature of the fact that the raw P-values would be considered significant if taken in isolation (i.e. raw $P<0.05$), and the estimated log fold-change was relatively large (\textgreater $log_2(1.5)$).
+These points are highlighted in black in Figure \ref{fig:clutchingAtStraws} with details given in Table \ref{tab:straws}.
+However, it should be noted that the FDR for the analysis of this data subset exceeded 50\% within the first two highly ranked genes, and as such the possibility that these genes are spurious artefacts of the analytic process is very real.
+
+
+
+\clearpage
+\subsection{Mutations Specific to Core/Anchor/ID Genes}
+
+% !Rnw root = MainReportUpdated.Rnw
+
+%% Analysis of the effects due to mutations in the Core/Anchor/ID set of genes
+%% Use the same process as before but alter the model matrix & array weights
+
+
+
+
+
+% latex table generated in R 3.1.1 by xtable 1.7-3 package
+% Thu Jul 17 16:50:51 2014
+\begin{table}[ht]
+\centering
+\caption{Top 3 significant genes for FANC Core/Anchor/ID mutations, using all available samples.} 
+\label{tableFCA}
+{\footnotesize
+\begin{tabular}{llrrrrr}
+  \toprule 
+ Probe ID & Gene & $log_2$FC & Ave. Expr & $T$-stat & $P$-value & FDR\\
+ \midrule 
+ ILMN\_2108709 & ANKRD11 & -1.86 & 9.50 & -5.25 & 5.77E-07 & 0.009 \\ 
+  ILMN\_1797341 & ARID1A & -2.06 & 10.00 & -4.71 & 6.13E-06 & 0.047 \\ 
+  ILMN\_1695797 & NCOA6 & -0.86 & 9.33 & -4.45 & 1.77E-05 & 0.091 \\ 
+   \bottomrule 
+\end{tabular}
+}
+\end{table}
+
+\begin{knitrout}
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{figure}[]
+
+
+{\centering \includegraphics[width=\maxwidth]{figure/volcanoFCA} 
+
+}
+
+\caption[Volcano plot for genes related to mutations in the Core/Anchor/ID set of genes]{Volcano plot for genes related to mutations in the Core/Anchor/ID set of genes\label{fig:volcanoFCA}}
+\end{figure}
+
+
+\end{knitrout}
+
+
+The same approach as for section \ref{FullAnalysis} was taken except the Full Network Mutation category was replaced by the Core/Anchor/ID category.
+Whereas there were 33 samples with known mutations across the entire FANC network, there were only 2 samples with known mutations in this subset of the FANC network.
+Analysis using this smaller effective sample-size yielded 2 and 3 genes with significant differential expression using an FDR of 5\% \& 10\% respectively (Table \ref{tableFCA} \& Figure \ref{fig:volcanoFCA}).
+Unfortunately, due to the smaller effective sample size, there was no possibility to detect any differential expression which tracked specifically with Karyotype
+
+
+
+
+
+
+
+% latex table generated in R 3.1.1 by xtable 1.7-3 package
+% Thu Jul 17 16:51:44 2014
+\begin{table}[ht]
+\centering
+\caption{Top 13 significant genes for FANC Core/Anchor/ID mutations obtained by restricting the dataset to only those samples with a defined status for Core/Anchor/ID mutations. However, it should be noted that the FDR for this set of genes is approaching 40\%.} 
+\label{tableFCA2}
+{\footnotesize
+\begin{tabular}{llrrrrr}
+  \toprule 
+ Probe ID & Gene & $log_2$FC & Ave. Expr & $T$-stat & $P$-value & FDR\\
+ \midrule 
+ ILMN\_2082244 & FOXK1 & -1.29 & 7.55 & -4.30 & 4.95E-05 & 0.379 \\ 
+  ILMN\_1703427 & SON & -1.19 & 7.63 & -4.12 & 9.57E-05 & 0.379 \\ 
+  ILMN\_1720124 & RCC2 & -0.69 & 11.31 & -4.07 & 1.12E-04 & 0.379 \\ 
+  ILMN\_1762224 & HPS3 & -1.15 & 7.01 & -4.02 & 1.35E-04 & 0.379 \\ 
+  ILMN\_1654210 & CD1C & 2.99 & 5.26 & 4.00 & 1.45E-04 & 0.379 \\ 
+  ILMN\_1734702 & MANEA & -1.79 & 4.79 & -3.97 & 1.62E-04 & 0.379 \\ 
+  ILMN\_3249419 & LOC728457 & -1.56 & 9.51 & -3.88 & 2.21E-04 & 0.379 \\ 
+  ILMN\_1717261 & HLA-DRB3 & 2.42 & 9.73 & 3.86 & 2.36E-04 & 0.379 \\ 
+  ILMN\_1664028 & CENPB & -0.90 & 10.00 & -3.85 & 2.42E-04 & 0.379 \\ 
+  ILMN\_3268717 & LOC100129674 & 1.16 & 5.58 & 3.81 & 2.75E-04 & 0.379 \\ 
+  ILMN\_1690077 & PPM1A & -1.23 & 6.09 & -3.79 & 2.93E-04 & 0.379 \\ 
+  ILMN\_1659536 & FAM24B & -1.67 & 5.77 & -3.79 & 2.94E-04 & 0.379 \\ 
+  ILMN\_1803060 & MAML1 & -1.05 & 5.80 & -3.77 & 3.19E-04 & 0.380 \\ 
+   \bottomrule 
+\end{tabular}
+}
+\end{table}
+
+\begin{knitrout}
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{figure}[]
+
+
+{\centering \includegraphics[width=\maxwidth]{figure/volcanoFCA2} 
+
+}
+
+\caption[Volcano plot for genes related to mutations in the Core/Anchor/ID set of genes, after restricting the dataset to only those samples with a known FANC status]{Volcano plot for genes related to mutations in the Core/Anchor/ID set of genes, after restricting the dataset to only those samples with a known FANC status.\label{fig:volcanoFCA2}}
+\end{figure}
+
+
+\end{knitrout}
+
+\par
+The dataset was further explored by restricting the samples to the 79 with specifically either a ``Y'' or ``N" annotation in the Core/Anchor/ID category.
+0 genes were detected as differentially expressed using an FDR of 10\%, and extending this to an FDR of 40\% gave a list of 13 genes (Table \ref{tableFCA2} \& Figure \ref{fig:volcanoFCA2}).
+Of the initial list presented in Table \ref{tableFCA}, no genes retained significance for this analysis with all genes in Table \ref{tableFCA2} being unique to this subset of data, with the already-noted high proportion of potential false discoveries.
+Again, with only 2 samples representing this category, this is to be expected.
+
+\clearpage
+\section{Closing Comments}
+It was noted throughout this analysis, that in general, the estimates of fold-change associated with FANC mutations ranged from subtle to moderate.
+Human biology is highly variable, a trait which would only be exaggerated by heterogeneous AML samples.
+Conventional statistics are designed to detect if there is a difference in the mean (i.e. average) values of two distributions, and as such observations from distributions with different means can appear in the opposite direction from what is intuitively expected.
+However, samples with these characteristics will often possess large standard variations \& not achieve statistical significance excepting when sample sizes are large enough, particularly if the two means are only subtly different.
+Additionally, microarrays of any form are known to correlate well with changes in gene expression, but estimates of differential expression from microarrays can be restricted in their range due to the technical constraints of the platform.
+Genes detected as differentially expressed as a result of a FANC mutation in this analysis, may have an average change in gene expression greater than is estimated by microarrays and as such no restrictions were placed on the estimates of fold-change at any stage of this analysis.
+
+\clearpage
+\section*{R Packages Used In Analysis}
+\begin{knitrout}\footnotesize
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwd{sessionInfo}\hlstd{()}
+\end{alltt}
+\begin{verbatim}
+## R version 3.1.1 (2014-07-10)
+## Platform: x86_64-pc-linux-gnu (64-bit)
+## 
+## locale:
+##  [1] LC_CTYPE=en_AU.UTF-8       LC_NUMERIC=C              
+##  [3] LC_TIME=en_AU.UTF-8        LC_COLLATE=en_AU.UTF-8    
+##  [5] LC_MONETARY=en_AU.UTF-8    LC_MESSAGES=en_AU.UTF-8   
+##  [7] LC_PAPER=en_AU.UTF-8       LC_NAME=C                 
+##  [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+## [11] LC_MEASUREMENT=en_AU.UTF-8 LC_IDENTIFICATION=C       
+## 
+## attached base packages:
+##  [1] grid      tcltk     parallel  stats     graphics  grDevices utils    
+##  [8] datasets  methods   base     
+## 
+## other attached packages:
+##  [1] lumiHumanIDMapping_1.10.0  illuminaHumanv4.db_1.22.1 
+##  [3] org.Hs.eg.db_2.14.0        RSQLite_0.11.4            
+##  [5] DBI_0.2-7                  AnnotationDbi_1.26.0      
+##  [7] GenomeInfoDb_1.0.2         corrplot_0.73             
+##  [9] xtable_1.7-3               matrixStats_0.10.1        
+## [11] limma_3.20.8               arrayQualityMetrics_3.20.0
+## [13] MBCB_1.18.0                tcltk2_1.2-10             
+## [15] lumi_2.16.0                beadarray_2.14.1          
+## [17] ggplot2_1.0.0              Biobase_2.24.0            
+## [19] BiocGenerics_0.10.0        knitr_1.6.8               
+## 
+## loaded via a namespace (and not attached):
+##  [1] affy_1.42.3             affyio_1.32.0          
+##  [3] affyPLM_1.40.1          annotate_1.42.0        
+##  [5] AnnotationForge_1.6.1   base64_1.2             
+##  [7] BatchJobs_1.3           BBmisc_1.7             
+##  [9] BeadDataPackR_1.16.0    beanplot_1.1           
+## [11] BiocInstaller_1.14.2    BiocParallel_0.6.1     
+## [13] biomaRt_2.20.0          Biostrings_2.32.1      
+## [15] bitops_1.0-6            brew_1.0-6             
+## [17] BSgenome_1.32.0         bumphunter_1.4.2       
+## [19] Cairo_1.5-6             checkmate_1.1          
+## [21] cluster_1.15.2          codetools_0.2-8        
+## [23] colorspace_1.2-4        digest_0.6.4           
+## [25] doRNG_1.6               evaluate_0.5.5         
+## [27] fail_1.2                foreach_1.4.2          
+## [29] formatR_0.10.5          Formula_1.1-2          
+## [31] gcrma_2.36.0            genefilter_1.46.1      
+## [33] GenomicAlignments_1.0.2 GenomicFeatures_1.16.2 
+## [35] GenomicRanges_1.16.3    gridSVG_1.4-0          
+## [37] gtable_0.1.2            highr_0.3.1            
+## [39] Hmisc_3.14-4            hwriter_1.3            
+## [41] illuminaio_0.6.0        IRanges_1.22.9         
+## [43] iterators_1.0.7         KernSmooth_2.23-12     
+## [45] labeling_0.2            lattice_0.20-29        
+## [47] latticeExtra_0.6-26     locfit_1.5-9.1         
+## [49] MASS_7.3-33             Matrix_1.1-4           
+## [51] mclust_4.3              methylumi_2.10.0       
+## [53] mgcv_1.8-1              minfi_1.10.2           
+## [55] multtest_2.20.0         munsell_0.4.2          
+## [57] nleqslv_2.3.1           nlme_3.1-117           
+## [59] nor1mix_1.2-0           pkgmaker_0.22          
+## [61] plyr_1.8.1              preprocessCore_1.26.1  
+## [63] proto_0.3-10            RColorBrewer_1.0-5     
+## [65] Rcpp_0.11.2             RCurl_1.96-0           
+## [67] registry_0.2            reshape_0.8.5          
+## [69] reshape2_1.4            RJSONIO_1.3-0          
+## [71] R.methodsS3_1.6.2       rngtools_1.2.4         
+## [73] Rsamtools_1.16.1        rtracklayer_1.24.2     
+## [75] scales_0.2.4            sendmailR_1.1-2        
+## [77] setRNG_2013.9-1         siggenes_1.38.0        
+## [79] splines_3.1.1           stats4_3.1.1           
+## [81] stringr_0.6.2           survival_2.37-7        
+## [83] SVGAnnotation_0.93-1    tools_3.1.1            
+## [85] vsn_3.32.0              XML_3.98-1.1           
+## [87] XVector_0.4.0           zlibbioc_1.10.0
+\end{verbatim}
+\end{kframe}
+\end{knitrout}
+
+\clearpage
+\section*{Appendix}
+The model coefficients for the genes shown in the heatmap (Figure \ref{fig:heatmap}) in Section \ref{sec:Karyo} are given below:
+% latex table generated in R 3.1.1 by xtable 1.7-3 package
+% Thu Jul 17 16:51:45 2014
+\begin{table}[ht]
+\centering
+\caption{LDLR} 
+{\footnotesize
+\begin{tabular}{rrrrrl}
+  \toprule 
+ Co-efficient & Estimate & Std.Error & $T$-stat & $P$-value & \\
+ \midrule 
+ (Intercept) & 9.643 & 0.168 & 57.286 & 1.35E-92 & *** \\ 
+  Source & -0.485 & 0.253 & -1.914 & 5.79E-02 & . \\ 
+  FANC.Full.Network & -0.899 & 0.233 & -3.865 & 1.76E-04 & *** \\ 
+  SimpKaryo.C & 0.180 & 0.251 & 0.720 & 4.73E-01 &  \\ 
+  M1 & -0.509 & 0.231 & -2.202 & 2.95E-02 & * \\ 
+  M2 & -0.362 & 0.218 & -1.662 & 9.89E-02 & . \\ 
+  M5 & 0.688 & 0.312 & 2.206 & 2.92E-02 & * \\ 
+  FANC.Full.Network:SimpKaryo.C & 1.159 & 0.449 & 2.581 & 1.10E-02 & * \\ 
+   \bottomrule 
+\end{tabular}
+}
+\end{table}
+% latex table generated in R 3.1.1 by xtable 1.7-3 package
+% Thu Jul 17 16:51:45 2014
+\begin{table}[ht]
+\centering
+\caption{KIAA0247} 
+{\footnotesize
+\begin{tabular}{rrrrrl}
+  \toprule 
+ Co-efficient & Estimate & Std.Error & $T$-stat & $P$-value & \\
+ \midrule 
+ (Intercept) & 8.408 & 0.062 & 135.669 & 2.68E-139 & *** \\ 
+  Source & -0.302 & 0.125 & -2.411 & 1.73E-02 & * \\ 
+  FANC.Full.Network & -0.257 & 0.112 & -2.300 & 2.31E-02 & * \\ 
+  SimpKaryo.C & 0.101 & 0.129 & 0.779 & 4.37E-01 &  \\ 
+  PrimaryMDS & -0.345 & 0.187 & -1.839 & 6.82E-02 & . \\ 
+  M1 & -0.267 & 0.099 & -2.703 & 7.82E-03 & ** \\ 
+  M5 & -0.348 & 0.146 & -2.385 & 1.85E-02 & * \\ 
+  FANC.Full.Network:SimpKaryo.C & -0.444 & 0.235 & -1.895 & 6.03E-02 & . \\ 
+   \bottomrule 
+\end{tabular}
+}
+\end{table}
+% latex table generated in R 3.1.1 by xtable 1.7-3 package
+% Thu Jul 17 16:51:45 2014
+\begin{table}[ht]
+\centering
+\caption{HMGB2} 
+{\footnotesize
+\begin{tabular}{rrrrrl}
+  \toprule 
+ Co-efficient & Estimate & Std.Error & $T$-stat & $P$-value & \\
+ \midrule 
+ (Intercept) & 11.523 & 0.079 & 146.789 & 2.04E-145 & *** \\ 
+  Source & -0.487 & 0.132 & -3.672 & 3.51E-04 & *** \\ 
+  FANC.Full.Network & -0.193 & 0.131 & -1.477 & 1.42E-01 &  \\ 
+  SimpKaryo.A & 0.081 & 0.117 & 0.692 & 4.90E-01 &  \\ 
+  M1 & -0.233 & 0.110 & -2.120 & 3.60E-02 & * \\ 
+  FANC.Full.Network:SimpKaryo.A & -0.497 & 0.235 & -2.110 & 3.67E-02 & * \\ 
+   \bottomrule 
+\end{tabular}
+}
+\end{table}
+% latex table generated in R 3.1.1 by xtable 1.7-3 package
+% Thu Jul 17 16:51:45 2014
+\begin{table}[ht]
+\centering
+\caption{GRASP} 
+{\footnotesize
+\begin{tabular}{rrrrrl}
+  \toprule 
+ Co-efficient & Estimate & Std.Error & $T$-stat & $P$-value & \\
+ \midrule 
+ (Intercept) & 5.906 & 0.164 & 35.960 & 8.85E-68 & *** \\ 
+  Source & -0.716 & 0.220 & -3.259 & 1.44E-03 & ** \\ 
+  FANC.Full.Network & -0.388 & 0.234 & -1.661 & 9.91E-02 & . \\ 
+  SimpKaryo.A & 0.201 & 0.205 & 0.983 & 3.27E-01 &  \\ 
+  SimpKaryo.C & -0.383 & 0.219 & -1.747 & 8.31E-02 & . \\ 
+  M0 & -1.062 & 0.488 & -2.175 & 3.15E-02 & * \\ 
+  M1 & -0.774 & 0.194 & -3.998 & 1.08E-04 & *** \\ 
+  M3 & 1.717 & 0.456 & 3.766 & 2.55E-04 & *** \\ 
+  M4 & -0.600 & 0.222 & -2.700 & 7.90E-03 & ** \\ 
+  FANC.Full.Network:SimpKaryo.A & -0.663 & 0.370 & -1.789 & 7.60E-02 & . \\ 
+   \bottomrule 
+\end{tabular}
+}
+\end{table}
+% latex table generated in R 3.1.1 by xtable 1.7-3 package
+% Thu Jul 17 16:51:45 2014
+\begin{table}[ht]
+\centering
+\caption{ELOVL5} 
+{\footnotesize
+\begin{tabular}{rrrrrl}
+  \toprule 
+ Co-efficient & Estimate & Std.Error & $T$-stat & $P$-value & \\
+ \midrule 
+ (Intercept) & 9.102 & 0.191 & 47.752 & 1.09E-81 & *** \\ 
+  Source & -0.395 & 0.178 & -2.222 & 2.81E-02 & * \\ 
+  FANC.Full.Network & -0.334 & 0.167 & -1.997 & 4.81E-02 & * \\ 
+  SimpKaryo.A & 0.212 & 0.145 & 1.457 & 1.48E-01 &  \\ 
+  M0 & -1.070 & 0.329 & -3.257 & 1.45E-03 & ** \\ 
+  M1 & -0.557 & 0.204 & -2.732 & 7.22E-03 & ** \\ 
+  M2 & -0.338 & 0.207 & -1.629 & 1.06E-01 &  \\ 
+  M3 & -1.422 & 0.376 & -3.777 & 2.45E-04 & *** \\ 
+  M4 & -0.657 & 0.231 & -2.839 & 5.28E-03 & ** \\ 
+  M5 & -0.516 & 0.237 & -2.176 & 3.15E-02 & * \\ 
+  FANC.Full.Network:SimpKaryo.A & -0.571 & 0.275 & -2.073 & 4.03E-02 & * \\ 
+   \bottomrule 
+\end{tabular}
+}
+\end{table}
+% latex table generated in R 3.1.1 by xtable 1.7-3 package
+% Thu Jul 17 16:51:45 2014
+\begin{table}[ht]
+\centering
+\caption{MSRB3} 
+{\footnotesize
+\begin{tabular}{rrrrrl}
+  \toprule 
+ Co-efficient & Estimate & Std.Error & $T$-stat & $P$-value & \\
+ \midrule 
+ (Intercept) & 8.443 & 0.348 & 24.273 & 1.57E-48 & *** \\ 
+  FANC.Full.Network & 0.222 & 0.428 & 0.519 & 6.05E-01 &  \\ 
+  SimpKaryo.A & -0.593 & 0.293 & -2.023 & 4.53E-02 & * \\ 
+  SimpKaryo.C & -0.850 & 0.382 & -2.226 & 2.79E-02 & * \\ 
+  PrimaryMDS & -0.801 & 0.484 & -1.653 & 1.01E-01 &  \\ 
+  PrimaryMisc & 1.347 & 0.539 & 2.498 & 1.38E-02 & * \\ 
+  M1 & 0.939 & 0.369 & 2.546 & 1.21E-02 & * \\ 
+  M2 & 1.133 & 0.356 & 3.181 & 1.86E-03 & ** \\ 
+  M3 & 1.223 & 0.753 & 1.623 & 1.07E-01 &  \\ 
+  M4 & 0.645 & 0.418 & 1.542 & 1.26E-01 &  \\ 
+  M5 & -0.919 & 0.450 & -2.045 & 4.30E-02 & * \\ 
+  FANC.Full.Network:SimpKaryo.A & 0.896 & 0.628 & 1.427 & 1.56E-01 &  \\ 
+  FANC.Full.Network:SimpKaryo.C & 1.845 & 0.682 & 2.707 & 7.76E-03 & ** \\ 
+   \bottomrule 
+\end{tabular}
+}
+\end{table}
+% latex table generated in R 3.1.1 by xtable 1.7-3 package
+% Thu Jul 17 16:51:45 2014
+\begin{table}[ht]
+\centering
+\caption{MSRB3} 
+{\footnotesize
+\begin{tabular}{rrrrrl}
+  \toprule 
+ Co-efficient & Estimate & Std.Error & $T$-stat & $P$-value & \\
+ \midrule 
+ (Intercept) & 7.409 & 0.253 & 29.272 & 1.57E-57 & *** \\ 
+  Source & 0.473 & 0.318 & 1.490 & 1.39E-01 &  \\ 
+  FANC.Full.Network & 0.263 & 0.405 & 0.651 & 5.16E-01 &  \\ 
+  SimpKaryo.A & -0.468 & 0.272 & -1.720 & 8.78E-02 & . \\ 
+  SimpKaryo.C & -0.791 & 0.345 & -2.293 & 2.35E-02 & * \\ 
+  PrimaryMisc & 1.199 & 0.557 & 2.153 & 3.32E-02 & * \\ 
+  M1 & 0.412 & 0.289 & 1.428 & 1.56E-01 &  \\ 
+  M2 & 0.463 & 0.271 & 1.711 & 8.97E-02 & . \\ 
+  M5 & -1.111 & 0.410 & -2.708 & 7.72E-03 & ** \\ 
+  FANC.Full.Network:SimpKaryo.A & 0.861 & 0.569 & 1.513 & 1.33E-01 &  \\ 
+  FANC.Full.Network:SimpKaryo.C & 1.414 & 0.747 & 1.894 & 6.06E-02 & . \\ 
+   \bottomrule 
+\end{tabular}
+}
+\end{table}
+% latex table generated in R 3.1.1 by xtable 1.7-3 package
+% Thu Jul 17 16:51:45 2014
+\begin{table}[ht]
+\centering
+\caption{FLJ12355} 
+{\footnotesize
+\begin{tabular}{rrrrrl}
+  \toprule 
+ Co-efficient & Estimate & Std.Error & $T$-stat & $P$-value & \\
+ \midrule 
+ (Intercept) & 5.897 & 0.151 & 39.094 & 6.00E-72 & *** \\ 
+  Source & 0.468 & 0.154 & 3.036 & 2.92E-03 & ** \\ 
+  FANC.Full.Network & 0.375 & 0.152 & 2.474 & 1.47E-02 & * \\ 
+  SimpKaryo.A & 0.153 & 0.133 & 1.153 & 2.51E-01 &  \\ 
+  M0 & -0.511 & 0.292 & -1.750 & 8.25E-02 & . \\ 
+  M1 & 0.491 & 0.168 & 2.922 & 4.13E-03 & ** \\ 
+  M2 & 0.521 & 0.167 & 3.124 & 2.22E-03 & ** \\ 
+  M4 & 0.544 & 0.191 & 2.846 & 5.17E-03 & ** \\ 
+  M5 & 0.413 & 0.194 & 2.131 & 3.50E-02 & * \\ 
+  FANC.Full.Network:SimpKaryo.A & 0.541 & 0.241 & 2.248 & 2.63E-02 & * \\ 
+   \bottomrule 
+\end{tabular}
+}
+\end{table}
+% latex table generated in R 3.1.1 by xtable 1.7-3 package
+% Thu Jul 17 16:51:45 2014
+\begin{table}[ht]
+\centering
+\caption{CRELD1} 
+{\footnotesize
+\begin{tabular}{rrrrrl}
+  \toprule 
+ Co-efficient & Estimate & Std.Error & $T$-stat & $P$-value & \\
+ \midrule 
+ (Intercept) & 8.247 & 0.107 & 76.850 & 4.36E-107 & *** \\ 
+  Source & 0.247 & 0.156 & 1.590 & 1.14E-01 &  \\ 
+  FANC.Full.Network & 0.061 & 0.177 & 0.347 & 7.29E-01 &  \\ 
+  SimpKaryo.A & -0.280 & 0.138 & -2.037 & 4.38E-02 & * \\ 
+  SimpKaryo.C & -0.519 & 0.172 & -3.013 & 3.13E-03 & ** \\ 
+  M0 & -0.438 & 0.313 & -1.398 & 1.64E-01 &  \\ 
+  M2 & -0.253 & 0.116 & -2.177 & 3.13E-02 & * \\ 
+  M3 & 1.604 & 0.427 & 3.757 & 2.62E-04 & *** \\ 
+  FANC.Full.Network:SimpKaryo.A & 0.687 & 0.264 & 2.603 & 1.04E-02 & * \\ 
+  FANC.Full.Network:SimpKaryo.C & 1.038 & 0.323 & 3.217 & 1.65E-03 & ** \\ 
+   \bottomrule 
+\end{tabular}
+}
+\end{table}
+% latex table generated in R 3.1.1 by xtable 1.7-3 package
+% Thu Jul 17 16:51:45 2014
+\begin{table}[ht]
+\centering
+\caption{TMED9} 
+{\footnotesize
+\begin{tabular}{rrrrrl}
+  \toprule 
+ Co-efficient & Estimate & Std.Error & $T$-stat & $P$-value & \\
+ \midrule 
+ (Intercept) & 10.175 & 0.045 & 225.859 & 1.83E-169 & *** \\ 
+  FANC.Full.Network & 0.263 & 0.084 & 3.122 & 2.22E-03 & ** \\ 
+  SimpKaryo.C & -0.083 & 0.096 & -0.872 & 3.85E-01 &  \\ 
+  M0 & -0.308 & 0.184 & -1.674 & 9.66E-02 & . \\ 
+  M2 & -0.209 & 0.070 & -2.970 & 3.55E-03 & ** \\ 
+  FANC.Full.Network:SimpKaryo.C & 0.404 & 0.184 & 2.193 & 3.01E-02 & * \\ 
+   \bottomrule 
+\end{tabular}
+}
+\end{table}
+% latex table generated in R 3.1.1 by xtable 1.7-3 package
+% Thu Jul 17 16:51:45 2014
+\begin{table}[ht]
+\centering
+\caption{MRPS36} 
+{\footnotesize
+\begin{tabular}{rrrrrl}
+  \toprule 
+ Co-efficient & Estimate & Std.Error & $T$-stat & $P$-value & \\
+ \midrule 
+ (Intercept) & 5.868 & 0.051 & 114.777 & 6.03E-131 & *** \\ 
+  Source & 0.212 & 0.110 & 1.939 & 5.47E-02 & . \\ 
+  FANC.Full.Network & 0.234 & 0.098 & 2.395 & 1.81E-02 & * \\ 
+  SimpKaryo.C & -0.398 & 0.118 & -3.365 & 1.01E-03 & ** \\ 
+  PrimaryMisc & -0.345 & 0.203 & -1.698 & 9.19E-02 & . \\ 
+  M5 & 0.186 & 0.129 & 1.447 & 1.50E-01 &  \\ 
+  FANC.Full.Network:SimpKaryo.C & 0.405 & 0.218 & 1.856 & 6.57E-02 & . \\ 
+   \bottomrule 
+\end{tabular}
+}
+\end{table}
+% latex table generated in R 3.1.1 by xtable 1.7-3 package
+% Thu Jul 17 16:51:45 2014
+\begin{table}[ht]
+\centering
+\caption{HS.131041} 
+{\footnotesize
+\begin{tabular}{rrrrrl}
+  \toprule 
+ Co-efficient & Estimate & Std.Error & $T$-stat & $P$-value & \\
+ \midrule 
+ (Intercept) & 5.251 & 0.111 & 47.341 & 2.08E-83 & *** \\ 
+  Source & 0.945 & 0.231 & 4.091 & 7.51E-05 & *** \\ 
+  FANC.Full.Network & 0.845 & 0.186 & 4.535 & 1.30E-05 & *** \\ 
+  SimpKaryo.C & -0.166 & 0.220 & -0.756 & 4.51E-01 &  \\ 
+  M1 & 0.433 & 0.167 & 2.588 & 1.08E-02 & * \\ 
+  FANC.Full.Network:SimpKaryo.C & -0.787 & 0.439 & -1.794 & 7.52E-02 & . \\ 
+   \bottomrule 
+\end{tabular}
+}
+\end{table}
+% latex table generated in R 3.1.1 by xtable 1.7-3 package
+% Thu Jul 17 16:51:45 2014
+\begin{table}[ht]
+\centering
+\caption{NMNAT3} 
+{\footnotesize
+\begin{tabular}{rrrrrl}
+  \toprule 
+ Co-efficient & Estimate & Std.Error & $T$-stat & $P$-value & \\
+ \midrule 
+ (Intercept) & 5.814 & 0.139 & 41.956 & 2.75E-76 & *** \\ 
+  FANC.Full.Network & 0.969 & 0.207 & 4.684 & 7.12E-06 & *** \\ 
+  SimpKaryo.A & 0.333 & 0.180 & 1.848 & 6.70E-02 & . \\ 
+  SimpKaryo.C & 0.374 & 0.251 & 1.492 & 1.38E-01 &  \\ 
+  M3 & -1.042 & 0.620 & -1.680 & 9.54E-02 & . \\ 
+  M4 & -0.576 & 0.210 & -2.740 & 7.03E-03 & ** \\ 
+  M5 & -0.653 & 0.261 & -2.499 & 1.37E-02 & * \\ 
+  FANC.Full.Network:SimpKaryo.C & -1.199 & 0.450 & -2.665 & 8.69E-03 & ** \\ 
+   \bottomrule 
+\end{tabular}
+}
+\end{table}
+% latex table generated in R 3.1.1 by xtable 1.7-3 package
+% Thu Jul 17 16:51:45 2014
+\begin{table}[ht]
+\centering
+\caption{JMJD4} 
+{\footnotesize
+\begin{tabular}{rrrrrl}
+  \toprule 
+ Co-efficient & Estimate & Std.Error & $T$-stat & $P$-value & \\
+ \midrule 
+ (Intercept) & 5.606 & 0.054 & 103.829 & 3.49E-126 & *** \\ 
+  FANC.Full.Network & 0.499 & 0.099 & 5.040 & 1.54E-06 & *** \\ 
+  SimpKaryo.C & 0.108 & 0.112 & 0.966 & 3.36E-01 &  \\ 
+  M0 & 0.425 & 0.188 & 2.259 & 2.56E-02 & * \\ 
+  M1 & 0.366 & 0.089 & 4.117 & 6.81E-05 & *** \\ 
+  FANC.Full.Network:SimpKaryo.C & -0.735 & 0.208 & -3.533 & 5.72E-04 & *** \\ 
+   \bottomrule 
+\end{tabular}
+}
+\end{table}
+% latex table generated in R 3.1.1 by xtable 1.7-3 package
+% Thu Jul 17 16:51:45 2014
+\begin{table}[ht]
+\centering
+\caption{C12ORF24} 
+{\footnotesize
+\begin{tabular}{rrrrrl}
+  \toprule 
+ Co-efficient & Estimate & Std.Error & $T$-stat & $P$-value & \\
+ \midrule 
+ (Intercept) & 7.694 & 0.114 & 67.425 & 7.14E-102 & *** \\ 
+  FANC.Full.Network & 0.588 & 0.157 & 3.754 & 2.62E-04 & *** \\ 
+  SimpKaryo.C & 0.711 & 0.192 & 3.697 & 3.22E-04 & *** \\ 
+  M0 & 0.885 & 0.333 & 2.659 & 8.84E-03 & ** \\ 
+  M1 & 0.911 & 0.158 & 5.752 & 6.14E-08 & *** \\ 
+  M2 & 0.416 & 0.151 & 2.764 & 6.55E-03 & ** \\ 
+  FANC.Full.Network:SimpKaryo.C & -1.061 & 0.337 & -3.150 & 2.03E-03 & ** \\ 
+   \bottomrule 
+\end{tabular}
+}
+\end{table}
+% latex table generated in R 3.1.1 by xtable 1.7-3 package
+% Thu Jul 17 16:51:45 2014
+\begin{table}[ht]
+\centering
+\caption{ZNF248} 
+{\footnotesize
+\begin{tabular}{rrrrrl}
+  \toprule 
+ Co-efficient & Estimate & Std.Error & $T$-stat & $P$-value & \\
+ \midrule 
+ (Intercept) & 6.142 & 0.115 & 53.391 & 6.61E-88 & *** \\ 
+  Source & 0.618 & 0.173 & 3.568 & 5.11E-04 & *** \\ 
+  FANC.Full.Network & 0.567 & 0.156 & 3.624 & 4.21E-04 & *** \\ 
+  SimpKaryo.C & 0.052 & 0.179 & 0.293 & 7.70E-01 &  \\ 
+  PrimaryMDS & 0.504 & 0.249 & 2.023 & 4.52E-02 & * \\ 
+  M1 & 0.442 & 0.154 & 2.880 & 4.69E-03 & ** \\ 
+  M2 & 0.258 & 0.148 & 1.736 & 8.49E-02 & . \\ 
+  M3 & 0.716 & 0.502 & 1.426 & 1.56E-01 &  \\ 
+  M5 & -0.332 & 0.191 & -1.738 & 8.46E-02 & . \\ 
+  FANC.Full.Network:SimpKaryo.C & -0.587 & 0.329 & -1.786 & 7.65E-02 & . \\ 
+   \bottomrule 
+\end{tabular}
+}
+\end{table}
+% latex table generated in R 3.1.1 by xtable 1.7-3 package
+% Thu Jul 17 16:51:45 2014
+\begin{table}[ht]
+\centering
+\caption{RFP} 
+{\footnotesize
+\begin{tabular}{rrrrrl}
+  \toprule 
+ Co-efficient & Estimate & Std.Error & $T$-stat & $P$-value & \\
+ \midrule 
+ (Intercept) & 6.858 & 0.061 & 112.669 & 3.88E-129 & *** \\ 
+  Source & 0.629 & 0.103 & 6.116 & 1.10E-08 & *** \\ 
+  FANC.Full.Network & 0.531 & 0.089 & 5.942 & 2.54E-08 & *** \\ 
+  SimpKaryo.A & 0.149 & 0.080 & 1.861 & 6.51E-02 & . \\ 
+  SimpKaryo.C & 0.101 & 0.119 & 0.847 & 3.98E-01 &  \\ 
+  PrimaryMDS & 0.274 & 0.179 & 1.530 & 1.28E-01 &  \\ 
+  M0 & 0.285 & 0.171 & 1.668 & 9.77E-02 & . \\ 
+  FANC.Full.Network:SimpKaryo.C & -0.434 & 0.193 & -2.248 & 2.63E-02 & * \\ 
+   \bottomrule 
+\end{tabular}
+}
+\end{table}
+% latex table generated in R 3.1.1 by xtable 1.7-3 package
+% Thu Jul 17 16:51:45 2014
+\begin{table}[ht]
+\centering
+\caption{INTS5} 
+{\footnotesize
+\begin{tabular}{rrrrrl}
+  \toprule 
+ Co-efficient & Estimate & Std.Error & $T$-stat & $P$-value & \\
+ \midrule 
+ (Intercept) & 6.242 & 0.069 & 90.769 & 4.65E-118 & *** \\ 
+  Source & 0.349 & 0.122 & 2.867 & 4.85E-03 & ** \\ 
+  FANC.Full.Network & 0.523 & 0.115 & 4.537 & 1.30E-05 & *** \\ 
+  SimpKaryo.C & 0.393 & 0.120 & 3.268 & 1.39E-03 & ** \\ 
+  M1 & 0.291 & 0.102 & 2.850 & 5.10E-03 & ** \\ 
+  M4 & 0.241 & 0.124 & 1.950 & 5.34E-02 & . \\ 
+  FANC.Full.Network:SimpKaryo.C & -0.494 & 0.235 & -2.105 & 3.72E-02 & * \\ 
+   \bottomrule 
+\end{tabular}
+}
+\end{table}
+
+
+\clearpage
+% latex table generated in R 3.1.1 by xtable 1.7-3 package
+% Thu Jul 17 16:51:45 2014
+\begin{table}[ht]
+\centering
+\caption{C17ORF90} 
+{\footnotesize
+\begin{tabular}{rrrrrl}
+  \toprule 
+ Co-efficient & Estimate & Std.Error & $T$-stat & $P$-value & \\
+ \midrule 
+ (Intercept) & 9.523 & 0.046 & 207.116 & 1.27E-164 & *** \\ 
+  FANC.Full.Network & 0.310 & 0.067 & 4.617 & 9.28E-06 & *** \\ 
+  SimpKaryo.A & 0.177 & 0.058 & 3.034 & 2.92E-03 & ** \\ 
+  SimpKaryo.C & 0.175 & 0.083 & 2.096 & 3.80E-02 & * \\ 
+  M1 & 0.110 & 0.061 & 1.806 & 7.32E-02 & . \\ 
+  FANC.Full.Network:SimpKaryo.C & -0.410 & 0.145 & -2.828 & 5.42E-03 & ** \\ 
+   \bottomrule 
+\end{tabular}
+}
+\end{table}
+% latex table generated in R 3.1.1 by xtable 1.7-3 package
+% Thu Jul 17 16:51:45 2014
+\begin{table}[ht]
+\centering
+\caption{NAPEPLD} 
+{\footnotesize
+\begin{tabular}{rrrrrl}
+  \toprule 
+ Co-efficient & Estimate & Std.Error & $T$-stat & $P$-value & \\
+ \midrule 
+ (Intercept) & 4.391 & 0.096 & 45.605 & 1.33E-80 & *** \\ 
+  Source & 0.537 & 0.133 & 4.038 & 9.25E-05 & *** \\ 
+  FANC.Full.Network & 0.422 & 0.108 & 3.910 & 1.50E-04 & *** \\ 
+  SimpKaryo.C & 0.131 & 0.151 & 0.869 & 3.87E-01 &  \\ 
+  M1 & 0.399 & 0.118 & 3.389 & 9.35E-04 & *** \\ 
+  M2 & 0.253 & 0.117 & 2.156 & 3.30E-02 & * \\ 
+  M4 & 0.316 & 0.140 & 2.255 & 2.59E-02 & * \\ 
+  FANC.Full.Network:SimpKaryo.C & -0.489 & 0.232 & -2.107 & 3.71E-02 & * \\ 
+   \bottomrule 
+\end{tabular}
+}
+\end{table}
+% latex table generated in R 3.1.1 by xtable 1.7-3 package
+% Thu Jul 17 16:51:45 2014
+\begin{table}[ht]
+\centering
+\caption{CCDC16} 
+{\footnotesize
+\begin{tabular}{rrrrrl}
+  \toprule 
+ Co-efficient & Estimate & Std.Error & $T$-stat & $P$-value & \\
+ \midrule 
+ (Intercept) & 7.598 & 0.125 & 60.827 & 3.45E-94 & *** \\ 
+  Source & 0.424 & 0.147 & 2.894 & 4.49E-03 & ** \\ 
+  FANC.Full.Network & 0.416 & 0.116 & 3.578 & 4.94E-04 & *** \\ 
+  SimpKaryo.C & 0.337 & 0.150 & 2.250 & 2.62E-02 & * \\ 
+  PrimaryMDS & -0.463 & 0.222 & -2.082 & 3.94E-02 & * \\ 
+  PrimaryMisc & 0.350 & 0.237 & 1.476 & 1.43E-01 &  \\ 
+  M1 & 0.725 & 0.137 & 5.277 & 5.67E-07 & *** \\ 
+  M2 & 0.504 & 0.136 & 3.702 & 3.21E-04 & *** \\ 
+  M3 & 0.524 & 0.358 & 1.464 & 1.46E-01 &  \\ 
+  M4 & 0.485 & 0.172 & 2.819 & 5.61E-03 & ** \\ 
+  FANC.Full.Network:SimpKaryo.C & -0.542 & 0.259 & -2.088 & 3.88E-02 & * \\ 
+   \bottomrule 
+\end{tabular}
+}
+\end{table}
+% latex table generated in R 3.1.1 by xtable 1.7-3 package
+% Thu Jul 17 16:51:45 2014
+\begin{table}[ht]
+\centering
+\caption{LOC645332} 
+{\footnotesize
+\begin{tabular}{rrrrrl}
+  \toprule 
+ Co-efficient & Estimate & Std.Error & $T$-stat & $P$-value & \\
+ \midrule 
+ (Intercept) & 5.986 & 0.079 & 75.928 & 2.58E-108 & *** \\ 
+  FANC.Full.Network & 0.387 & 0.118 & 3.278 & 1.35E-03 & ** \\ 
+  SimpKaryo.C & 0.241 & 0.133 & 1.807 & 7.31E-02 & . \\ 
+  M0 & 0.635 & 0.287 & 2.217 & 2.84E-02 & * \\ 
+  M1 & 0.472 & 0.118 & 4.007 & 1.04E-04 & *** \\ 
+  M2 & 0.222 & 0.110 & 2.013 & 4.62E-02 & * \\ 
+  FANC.Full.Network:SimpKaryo.C & -0.480 & 0.264 & -1.816 & 7.16E-02 & . \\ 
+   \bottomrule 
+\end{tabular}
+}
+\end{table}
+% latex table generated in R 3.1.1 by xtable 1.7-3 package
+% Thu Jul 17 16:51:45 2014
+\begin{table}[ht]
+\centering
+\caption{FLJ22222} 
+{\footnotesize
+\begin{tabular}{rrrrrl}
+  \toprule 
+ Co-efficient & Estimate & Std.Error & $T$-stat & $P$-value & \\
+ \midrule 
+ (Intercept) & 4.557 & 0.091 & 50.290 & 2.42E-84 & *** \\ 
+  Source & 0.578 & 0.142 & 4.057 & 8.73E-05 & *** \\ 
+  FANC.Full.Network & 0.468 & 0.120 & 3.886 & 1.65E-04 & *** \\ 
+  SimpKaryo.A & 0.211 & 0.103 & 2.042 & 4.33E-02 & * \\ 
+  SimpKaryo.C & 0.047 & 0.143 & 0.333 & 7.39E-01 &  \\ 
+  PrimaryMDS & 0.363 & 0.204 & 1.785 & 7.67E-02 & . \\ 
+  PrimaryMisc & 0.447 & 0.233 & 1.915 & 5.78E-02 & . \\ 
+  M0 & 0.618 & 0.252 & 2.451 & 1.57E-02 & * \\ 
+  M1 & 0.381 & 0.112 & 3.405 & 8.93E-04 & *** \\ 
+  M4 & 0.274 & 0.125 & 2.191 & 3.03E-02 & * \\ 
+  FANC.Full.Network:SimpKaryo.C & -0.521 & 0.274 & -1.901 & 5.97E-02 & . \\ 
+   \bottomrule 
+\end{tabular}
+}
+\end{table}
+% latex table generated in R 3.1.1 by xtable 1.7-3 package
+% Thu Jul 17 16:51:45 2014
+\begin{table}[ht]
+\centering
+\caption{C9ORF37} 
+{\footnotesize
+\begin{tabular}{rrrrrl}
+  \toprule 
+ Co-efficient & Estimate & Std.Error & $T$-stat & $P$-value & \\
+ \midrule 
+ (Intercept) & 5.806 & 0.078 & 74.098 & 2.24E-106 & *** \\ 
+  Source & 0.199 & 0.133 & 1.496 & 1.37E-01 &  \\ 
+  FANC.Full.Network & 0.433 & 0.111 & 3.902 & 1.54E-04 & *** \\ 
+  SimpKaryo.C & -0.024 & 0.129 & -0.183 & 8.55E-01 &  \\ 
+  M0 & 0.469 & 0.260 & 1.803 & 7.37E-02 & . \\ 
+  M1 & 0.226 & 0.110 & 2.060 & 4.14E-02 & * \\ 
+  M2 & -0.216 & 0.105 & -2.068 & 4.07E-02 & * \\ 
+  FANC.Full.Network:SimpKaryo.C & -0.425 & 0.241 & -1.764 & 8.02E-02 & . \\ 
+   \bottomrule 
+\end{tabular}
+}
+\end{table}
+% latex table generated in R 3.1.1 by xtable 1.7-3 package
+% Thu Jul 17 16:51:45 2014
+\begin{table}[ht]
+\centering
+\caption{DET1} 
+{\footnotesize
+\begin{tabular}{rrrrrl}
+  \toprule 
+ Co-efficient & Estimate & Std.Error & $T$-stat & $P$-value & \\
+ \midrule 
+ (Intercept) & 6.082 & 0.071 & 85.152 & 3.18E-113 & *** \\ 
+  Source & 0.201 & 0.125 & 1.610 & 1.10E-01 &  \\ 
+  FANC.Full.Network & 0.389 & 0.114 & 3.409 & 8.75E-04 & *** \\ 
+  SimpKaryo.A & 0.178 & 0.094 & 1.880 & 6.24E-02 & . \\ 
+  SimpKaryo.C & 0.248 & 0.122 & 2.030 & 4.45E-02 & * \\ 
+  M3 & -0.535 & 0.249 & -2.153 & 3.33E-02 & * \\ 
+  M4 & -0.211 & 0.117 & -1.798 & 7.45E-02 & . \\ 
+  M5 & -0.253 & 0.142 & -1.780 & 7.75E-02 & . \\ 
+  FANC.Full.Network:SimpKaryo.C & -0.398 & 0.221 & -1.802 & 7.39E-02 & . \\ 
+   \bottomrule 
+\end{tabular}
+}
+\end{table}
+
+
+
+\end{document}

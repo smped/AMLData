@@ -1,0 +1,114 @@
+% !Rnw root = MainReportUpdated.Rnw
+
+%% Analysis of the effects due to mutations in the Core/Anchor/ID set of genes
+%% Use the same process as before but alter the model matrix & array weights
+
+<<modMatFCA>>=
+modMatFCA <- fullMat[,c("Intercept", "Source", paste("SimpKaryo", c("A","C"), sep="."), "FANC.Core.Anchor.ID")]
+arrWeightsFCA <- arrayWeights(lBatch.fin, design=modMatFCA, weights=prbWeights) #prbWeights are the same as before
+wtMatFCA <- arrWeightsFCA*prbWeights #
+@
+
+<<fitModelFCAFull>>=
+## Fit the model
+fitFCA <- lmFit(exprs(lBatch.fin), design=modMatFCA, weights=wtMatFCA)
+fitFCA <- eBayes(fitFCA) #
+@
+
+<<topTableFCAFull, results='asis', include=TRUE>>=
+topTabFCA <- topTable(fitFCA, coef="FANC.Core.Anchor.ID", n=nFinPrbs, sort.by="p") #
+sigFCA <- list(rownames(topTabFCA[which(topTabFCA$adj.P.Val < 0.05),]), rownames(topTabFCA[which(topTabFCA$adj.P.Val < 0.1),]))
+nSigFCA <- sapply(sigFCA, FUN=length)
+outFCA <- cbind(illuminaMap[rownames(topTabFCA),c("Probe_Id", "Symbol")], topTabFCA[,1:5])
+xTabFCA <- xtable(outFCA[sigFCA[[2]],], caption = paste("Top", nSigFCA[2], "significant genes for FANC Core/Anchor/ID mutations, using all available samples.", sep=" "), label = "tableFCA")
+dig <- c(0,0,0,2,2,2,-2,3)
+digits(xTabFCA) <- dig
+print(xTabFCA, 
+      size="footnotesize",
+      caption.placement="top", 
+      include.rownames=FALSE, 
+      include.colnames=FALSE,
+      hline.after=NULL,
+      add.to.row = list(pos = list(-1, nSigFCA[2]), 
+                        command = c(paste("\\toprule \n", 
+                                          "Probe ID & Gene & $log_2$FC & Ave. Expr & $T$-stat & $P$-value & FDR\\\\\n",
+                                          "\\midrule \n"),
+                                    "\\bottomrule \n")))
+@
+<<volcanoFCA, include=TRUE, fig.cap='Volcano plot for genes related to mutations in the Core/Anchor/ID set of genes'>>=
+plot(topTabFCA$logFC, -log10(topTabFCA$P.Value), pch=16, cex=0.45, col="grey", xlab=expression(paste(log[2], " Fold-Change", sep="")), ylab=expression(paste(-log[10], "P-Value", sep="")))
+points(topTabFCA$logFC[1:12], -log10(topTabFCA$P.Value[1:12]), pch=16, col="black", cex=0.45)
+abline(h=-log10(c(mean(topTabFCA$P.Value[4:5]), mean(topTabFCA$P.Value[12:13]))), col=c("red","blue"), lty=2)
+text(-4, -log10(c(mean(topTabFCA$P.Value[4:5]), mean(topTabFCA$P.Value[12:13]))), labels=paste("FDR =", c(0.1, 0.2) ), col=c("red","blue"), lty=2, pos=3)
+@
+<<exportFCAData>>=
+write.csv(outFCA[order(outFCA$t, decreasing=TRUE),], "FCA.Genelist.csv") #
+@
+
+The same approach as for section \ref{FullAnalysis} was taken except the Full Network Mutation category was replaced by the Core/Anchor/ID category.
+Whereas there were \Sexpr{sum(fullMat[,"FANC.Full.Network"])} samples with known mutations across the entire FANC network, there were only \Sexpr{sum(fullMat[,"FANC.Core.Anchor.ID"])} samples with known mutations in this subset of the FANC network.
+Analysis using this smaller effective sample-size yielded \Sexpr{nSigFCA[1]} and \Sexpr{nSigFCA[2]} genes with significant differential expression using an FDR of 5\% \& 10\% respectively (Table \ref{tableFCA} \& Figure \ref{fig:volcanoFCA}).
+Unfortunately, due to the smaller effective sample size, there was no possibility to detect any differential expression which tracked specifically with Karyotype
+
+<<fcaOnlySamples>>=
+## Extract only the FANC annotated samples from the original batch
+fcaSamp <- which(newAnnot$FANC.Core.Anchor.ID %in% c("Y","N")) #
+fcaAnnot <- newAnnot[fcaSamp,]
+lBatch.fca <- lBatch.log[,fcaSamp]
+lBatch.fca <- lumiN(lBatch.fca, method="rsn")
+nChipsfca <- length(fcaSamp)
+@
+
+<<prbRemovalFCA>>=
+## Redo the DABG
+detPFCA <- detectionCall(lBatch.fca,  Th=0.05, type="probe") #
+detPrbsFCA <- which(detPFCA>nChipsfca/2)
+nDetFCA <- length(detPrbsFCA)
+finPrbsFCA <- intersect(goodPrbs, detPrbsFCA)
+lBatch.fca <- lBatch.fca[finPrbsFCA,]
+@
+
+<<fitModelFCA>>=
+modMatFCA2 <- fullMat[fcaSamp,c("Intercept", "Source", paste("SimpKaryo", c("A","C"), sep="."), "FANC.Core.Anchor.ID")] #
+prbWFCA2 <- beadNum(lBatch.fca) # These are the number of beads
+arrWFCA2 <- arrayWeights(lBatch.fca, design=modMatFCA2, weights=prbWFCA2)
+wtMatFCA2 <- arrWFCA2*prbWFCA2
+fitFCA2 <- lmFit(exprs(lBatch.fca), design=modMatFCA2, weights=wtMatFCA2)
+fitFCA2 <- eBayes(fitFCA2)
+@
+
+<<topTabFCA2, results='asis', include=TRUE>>=
+topTabFCA2 <- topTable(fitFCA2, coef="FANC.Core.Anchor.ID", n=length(finPrbsFCA), sort.by="p") #
+## There are now a handful using an FDR of 0.2
+sigFCA2 <- list(rownames(topTabFCA2[which(topTabFCA2$adj.P.Val < 0.1),]), rownames(topTabFCA2[which(topTabFCA2$adj.P.Val < 0.4),]))
+nSigFCA2 <- sapply(sigFCA2, FUN=length)
+outFCA2 <- cbind(illuminaMap[rownames(topTabFCA2),c("Probe_Id", "ILMN_Gene")], topTabFCA2[,1:5])
+xTabFCA2 <- xtable(outFCA2[sigFCA2[[2]],], caption = paste("Top", nSigFCA2[[2]], "significant genes for FANC Core/Anchor/ID mutations obtained by restricting the dataset to only those samples with a defined status for Core/Anchor/ID mutations. However, it should be noted that the FDR for this set of genes is approaching 40\\%."), label = "tableFCA2")
+dig <- c(0,0,0,2,2,2,-2,3)
+digits(xTabFCA2) <- dig
+print(xTabFCA2, 
+      size="footnotesize",
+      caption.placement="top", 
+      include.rownames=FALSE, 
+      include.colnames=FALSE,
+      hline.after=NULL,
+      add.to.row = list(pos = list(-1, nSigFCA2[[2]]), 
+                        command = c(paste("\\toprule \n", 
+                                          "Probe ID & Gene & $log_2$FC & Ave. Expr & $T$-stat & $P$-value & FDR\\\\\n",
+                                          "\\midrule \n"),
+                                    "\\bottomrule \n")))
+@
+<<volcanoFCA2, include=TRUE, fig.cap='Volcano plot for genes related to mutations in the Core/Anchor/ID set of genes, after restricting the dataset to only those samples with a known FANC status.'>>=
+plot(topTabFCA2$logFC, -log10(topTabFCA2$P.Value), pch=16, cex=0.45, col="grey", xlab=expression(paste(log[2], " Fold-Change", sep="")), ylab=expression(paste(-log[10], "P-Value", sep="")))
+points(topTabFCA2$logFC[1:nSigFCA2[2]], -log10(topTabFCA2$P.Value[1:nSigFCA2[2]]), pch=16, col="black", cex=0.45)
+abline(h=-log10(mean(topTabFCA2$P.Value[nSigFCA2[2]:(nSigFCA2[2]+1)])), col="blue", lty=2)
+text(4, -log10(mean(topTabFCA2$P.Value[nSigFCA2[2]:(nSigFCA2[2]+1)])), labels="FDR = 0.4" , col=c("blue"), lty=2, pos=3)
+@
+<<exportFCA2Data>>=
+write.csv(outFCA2[order(outFCA2$t, decreasing=TRUE),], "FCAsubset.Genelist.csv") #
+@
+\par
+The dataset was further explored by restricting the samples to the \Sexpr{nrow(pData(lBatch.fca))} with specifically either a ``Y'' or ``N" annotation in the Core/Anchor/ID category.
+\Sexpr{nSigFCA2[1]} genes were detected as differentially expressed using an FDR of 10\%, and extending this to an FDR of 40\% gave a list of \Sexpr{nSigFCA2[2]} genes (Table \ref{tableFCA2} \& Figure \ref{fig:volcanoFCA2}).
+Of the initial list presented in Table \ref{tableFCA}, no genes retained significance for this analysis with all genes in Table \ref{tableFCA2} being unique to this subset of data, with the already-noted high proportion of potential false discoveries.
+Again, with only \Sexpr{length(which(pData(lBatch.fin)$FANC.Core.Anchor.ID=="Y"))} samples representing this category, this is to be expected.

@@ -1,0 +1,55 @@
+%% There are two choices for rewriting this.
+%% 1 - rerun with BG-corrected data, or
+%% 2 - BG correct the data using the normexp convolution & go from there...
+
+<<bgCorrect>>=
+prbInt <- exprs(lBatch)
+negCntrlInt <- controlData(lBatch)[which(controlData(lBatch)[,1]=="NEGATIVE"),-(1:2)]
+boxplot(list(Gene=colMeans(prbInt), Controls=colMeans(negCntrlInt)), ylab="Average Probe Intensity")
+bgc <- as.matrix(mbcb.correct(prbInt, negCntrlInt, mleBool=TRUE)$MLE)
+colnames(bgc) <- pData(lBatch)$sampleID
+lBatch.bgc <- lBatch # Clone the object
+exprs(lBatch.bgc) <- bgc # Change to the bg corrected values
+@
+
+<<bgPlots, eval=FALSE>>=
+## Don't include in the report, but just use for manual checking
+boxplot(list(Gene=colMeans(prbInt), Controls=colMeans(negCntrlInt), bgCorrected=colMeans(bgc)), ylab="Average Probe Intensity")
+plotDensity(exprs(lBatch))
+plotDensity(exprs(lBatch.bgc))
+## All looks about right
+@
+
+<<normalise>>=
+lBatch.log <- lumiT(lBatch.bgc, method="log2")
+lBatch.rsn <- lumiN(lBatch.log, method="rsn")
+@
+
+<<postNormQC>>=
+arrayQualityMetrics(lBatch.rsn, outdir="aqmReportPostNorm", force=TRUE, do.logtransform=FALSE, intgroup=c("Source", "FANC.ALL"), reporttitle="QA Report for FANC-ALM Illumina Dataset")
+## Again, just inspect manually. They don't need to be in the report.
+@
+
+<<DABG>>=
+detP <- detectionCall(lBatch,  Th=0.05, type="probe")
+detPrbs <- which(detP>nChips/2)
+nDet <- length(detPrbs)
+@
+
+<<rmBadProbes>>=
+nuID <- rownames(fData(lBatch))
+illuminaMap <- nuID2IlluminaID(nuID)
+x <- illuminaHumanv4PROBEQUALITY
+xx <- unlist(as.list(x[illuminaMap[,"Probe_Id"]]))
+illuminaMap <- cbind(illuminaMap, ProbeQuality=xx)
+goodPrbs <- which(!xx %in% c("Bad", "No match"))
+nGood <- length(goodPrbs)
+finPrbs <- intersect(goodPrbs, detPrbs)
+nFinPrbs <- length(finPrbs)
+lBatch.fin <- lBatch.rsn[finPrbs,]
+@
+
+The data was background-corrected using the Negative Control Probes to estimate the parameters of an RMA-like model in the R package \textit{mbcb}.
+Background-corrected data was $log_2$-transformed to help minimise the impact of increasing variance with increasing signal, and the dataset was normalised using Robust Spline Normalisation (RSN).
+Of the original \Sexpr{formatC(nrow(fData(lBatch)), big.mark=",")} probes on the array, the \Sexpr{formatC(nrow(fData(lBatch))-nGood, big.mark=",")} probes with sequences considered to be poor matches for the corresponding target, or with no matches were removed.
+Detection Above Background (DABG) was also performed and probes with detection p-values \textgreater 0.05 in more than half of the samples were removed leaving a total of \Sexpr{formatC(nFinPrbs, big.mark=",")} probes for downstream analysis.

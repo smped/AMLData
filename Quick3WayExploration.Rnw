@@ -1,0 +1,28 @@
+%% This is a quick exploration to see the effects of treating Unknown for FANC as a separate category
+%% & setting that as the baseline.
+
+<<setFANCWT>>=
+FANC <- matrix(0, ncol=3, nrow=nChips, dimnames=list(c(),c("FANC.Full.Network", "FANC.Core.Anchor.ID", "FANC.WT")))
+FANC[which(newAnnot$FANC.Full.Network == "Y"),"FANC.Full.Network"] <- 1
+FANC[which(newAnnot$FANC.Core.Anchor.ID =="Y"), "FANC.Core.Anchor.ID"] <- 1
+FANC[intersect(which(newAnnot$FANC.Full.Network == "N"), which(newAnnot$FANC.Core.Anchor.ID=="N")), "FANC.WT"] <- 1
+@
+
+<<setMatrixAndWeights>>=
+fullMat <- cbind(1, Source, M, SimpKaryo, PrimaryAML, PrimaryMDS, PrimaryMisc, FLT3, NPM1, CEBPA, GADD45, KLF5, Seq, FANC, MBD, METC, C1, C5)
+colnames(fullMat)[1] <- "Intercept"
+rownames(fullMat) <- pData(lBatch.rsn)$sampleID
+modMat <- fullMat[,c("Intercept", "Source", paste("SimpKaryo", c("A","C"), sep="."), "FANC.Full.Network", "FANC.WT")]
+prbWeights <- beadNum(lBatch.fin) # These are the number of beads
+arrWeights <- arrayWeights(lBatch.fin, design=modMat, weights=prbWeights)
+wtMat <- arrWeights*prbWeights
+@
+
+<<fitWT>>=
+fit <- lmFit(exprs(lBatch.fin), design=modMat, weights=wtMat)
+contMat <- makeContrasts(FANC.Full.Network - FANC.WT, levels=modMat)
+fit <- eBayes(contrasts.fit(fit, contMat))
+topTable(fit)
+# Nope nothing of interest really..
+@
+

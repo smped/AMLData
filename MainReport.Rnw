@@ -1,0 +1,82 @@
+\documentclass{article}
+\usepackage{underscore}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{subfig}
+
+\begin{document}
+
+\title{Analysis of FANC-AML Illumina Dataset}
+\author{Steve Pederson\\
+        Adelaide University\\
+        Bioinformatics Centre}
+\maketitle
+
+<<knitrSetup, include=FALSE>>=
+knit_hooks$set(crop=hook_pdfcrop)
+opts_knit$set(self.contained=FALSE)
+opts_chunk$set(fig.align='center', fig.show='as.is', crop=TRUE, include=FALSE, echo=FALSE)
+Sys.setenv(TEXINPUTS=getwd(), BIBINPUTS=getwd(), BSTINPUTS=getwd())
+pdf.options(useDingbats=TRUE)
+@
+
+<<setupWorkspace>>=
+source("loadPackages.R")
+source("extraFunctions.R")
+@
+
+\section{Data Description}
+<<includeDataDesc, child='DataDescriptionUpdatedHeader.Rnw'>>=
+## This imports the entire body of text & the environment from the child
+@
+
+\clearpage
+\section{Quality Assessment}
+<<includeQA, child='QA.Rnw'>>=
+@
+
+\clearpage
+\section{Data Pre-Processing}
+<<includeDataPreProc, child='DataPreProcessing.Rnw'>>=
+@
+
+\clearpage
+\section{Annotation of the Dataset}
+<<includeAnnotationAnalysis, child='AnnotationAnalysis.Rnw'>>=
+@
+
+\clearpage
+\section{Analysis}
+
+\subsection{Complete Dataset for all FANC Network-related Genes}
+\label{FullAnalysis}
+<<includeFullData, child='FullDataset.Rnw'>>=
+@
+
+\subsection{Subset of Samples With Known FANC Status}
+<<includeFANCSubset, child='FANCSubset.Rnw'>>=
+@
+
+\clearpage
+\subsection{Mutations Specific to Core/Anchor/ID Genes}
+<<includeFCA, child='CoreAnchorID.Rnw'>>=
+@
+
+\clearpage
+\section{Closing Comments}
+It was noted throughout this analysis, that in general, the estimates of fold-change associated with FANC mutations ranged from subtle to moderate.
+Human biology is highly variable, a trait which would only be exaggerated by heterogeneous AML samples.
+Conventional statistics are designed to detect if there is a difference in the mean (i.e. average) values of two distributions, and as such observations from distributions with different means can appear in the opposite direction from what is intuitively expected.
+However, samples with these characteristics will often possess large standard variations \& not achieve statistical significance excepting when sample sizes are large enough, particularly if the two means are only subtly different.
+Additionally, microarrays of any form are known to correlate well with changes in gene expression, but estimates of differential expression from microarrays can be restricted in their range due to the technical constraints of the platform.
+Genes detected as differentially expressed as a result of a FANC mutation in this analysis, may have an average change in gene expression greater than is estimated by microarrays and as such no restrictions were placed on the estimates of fold-change at any stage of this analysis.
+
+\clearpage
+\section*{R Packages Used In Analysis}
+<<sessionInfo, echo=TRUE, include=TRUE, size='footnotesize'>>=
+sessionInfo()
+@
+
+
+
+\end{document}
